@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     
     # Local apps
     'apps.accounts.apps.AccountsConfig',
+    'apps.preferences.apps.PreferencesConfig',
 ]
 
 MIDDLEWARE = [

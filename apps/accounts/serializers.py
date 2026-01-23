@@ -149,8 +149,15 @@ class UserSerializer(serializers.ModelSerializer):
             'is_active',
             'date_joined',
             'auth_provider',
+            'has_preferences',
         ]
         read_only_fields = fields
+
+    has_preferences = serializers.SerializerMethodField()
+
+    def get_has_preferences(self, obj):
+        """Check if the user has created preferences."""
+        return hasattr(obj, 'preferences')
 
 
 class GoogleAuthSerializer(serializers.Serializer):

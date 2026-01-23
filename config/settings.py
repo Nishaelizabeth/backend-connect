@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'apps.accounts.apps.AccountsConfig',
     'apps.preferences.apps.PreferencesConfig',
     'apps.buddies.apps.BuddiesConfig',
+    'apps.notifications.apps.NotificationsConfig',
 ]
 
 MIDDLEWARE = [

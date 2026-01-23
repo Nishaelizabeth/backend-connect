@@ -21,4 +21,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.accounts.urls', namespace='accounts')),
     path('api/preferences/', include('apps.preferences.urls', namespace='preferences')),
+    path('api/buddies/', include('apps.buddies.urls', namespace='buddies')),
 ]

@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     # Local apps
     'apps.accounts.apps.AccountsConfig',
     'apps.preferences.apps.PreferencesConfig',
+    'apps.buddies.apps.BuddiesConfig',
 ]
 
 MIDDLEWARE = [

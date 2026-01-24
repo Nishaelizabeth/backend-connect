@@ -23,4 +23,5 @@ urlpatterns = [
     path('api/preferences/', include('apps.preferences.urls', namespace='preferences')),
     path('api/buddies/', include('apps.buddies.urls', namespace='buddies')),
     path('api/notifications/', include('apps.notifications.urls', namespace='notifications')),
+    path('api/trips/', include('apps.trips.urls', namespace='trips')),
 ]

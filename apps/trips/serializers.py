@@ -109,3 +109,16 @@ class TripDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Trip
         fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'created_at', 'members')
+
+
+class TripInvitationSerializer(serializers.Serializer):
+    membership_id = serializers.IntegerField(source='id')
+    trip_id = serializers.IntegerField(source='trip.id')
+    title = serializers.CharField(source='trip.title')
+    destination = serializers.CharField(source='trip.destination')
+    start_date = serializers.DateField(source='trip.start_date')
+    end_date = serializers.DateField(source='trip.end_date')
+    creator_id = serializers.IntegerField(source='trip.creator.id')
+    creator_name = serializers.CharField(source='trip.creator.full_name')
+    status = serializers.CharField()
+    joined_at = serializers.DateTimeField(allow_null=True)

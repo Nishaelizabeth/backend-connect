@@ -84,3 +84,19 @@ class RejectTripAPIView(APIView):
         )
 
         return Response({'detail': 'Invitation rejected.'})
+
+
+class InvitationsListAPIView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        user = request.user
+        invitations = TripMember.objects.filter(user=user, status=TripMember.MembershipStatus.INVITED).select_related('trip__creator', 'user', 'trip')
+
+        from .serializers import TripInvitationSerializer
+
+        serializer = TripInvitationSerializer(invitations, many=True)
+        return Response({
+            'count': invitations.count(),
+            'results': serializer.data
+        })

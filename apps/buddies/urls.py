@@ -10,6 +10,7 @@ from .views import (
     BuddyRequestRejectView,
     BuddyRequestCancelView,
     AcceptedBuddiesListView,
+    DisconnectBuddyView,
 )
 
 app_name = 'buddies'
@@ -26,4 +27,7 @@ urlpatterns = [
     
     # Accepted buddies
     path('accepted/', AcceptedBuddiesListView.as_view(), name='accepted-list'),
+    
+    # Disconnect
+    path('disconnect/<int:user_id>/', DisconnectBuddyView.as_view(), name='disconnect'),
 ]

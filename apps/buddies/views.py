@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404
 
 from .services import get_buddy_matches
 from .models import BuddyRequest
+from django.db import models
 from .serializers import (
     BuddyMatchSerializer,
     BuddyRequestSerializer,
@@ -159,6 +160,23 @@ class BuddyRequestAcceptView(views.APIView):
         if serializer.is_valid():
             updated_request = serializer.save()
             
+            # Create symmetric BuddyMatch records
+            from .models import BuddyMatch
+            
+            # Create match A -> B
+            BuddyMatch.objects.get_or_create(
+                user=updated_request.sender,
+                matched_user=updated_request.receiver,
+                defaults={'match_score': 0.0} # Default score, can be computed later
+            )
+            
+            # Create match B -> A
+            BuddyMatch.objects.get_or_create(
+                user=updated_request.receiver,
+                matched_user=updated_request.sender,
+                defaults={'match_score': 0.0}
+            )
+            
             # Create notification for sender that their request was accepted
             Notification.create_buddy_request_accepted(
                 sender=updated_request.sender,
@@ -217,25 +235,21 @@ class AcceptedBuddiesListView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        user = request.user
-        from django.db.models import Q
+        from .models import BuddyMatch
         
-        # Get all accepted requests where user is sender or receiver
-        accepted_requests = BuddyRequest.objects.filter(
-            Q(sender=user) | Q(receiver=user),
-            status=BuddyRequest.Status.ACCEPTED
-        ).select_related('sender', 'receiver')
-
-        # Extract buddy info
+        # Get all symmetric matches for the user
+        matches = BuddyMatch.objects.filter(
+            user=request.user
+        ).select_related('matched_user')
+        
         buddies = []
-        for req in accepted_requests:
-            # The buddy is the other person in the request
-            buddy = req.receiver if req.sender == user else req.sender
+        for match in matches:
             buddies.append({
-                'id': buddy.id,
-                'full_name': buddy.full_name,
-                'email': buddy.email,
-                'connected_at': req.updated_at,
+                'id': match.matched_user.id,
+                'full_name': match.matched_user.full_name,
+                'email': match.matched_user.email,
+                'match_score': match.match_score,
+                'connected_at': match.created_at,
             })
 
         return Response({
@@ -268,3 +282,39 @@ class BuddyRequestCancelView(views.APIView):
             
         buddy_request.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DisconnectBuddyView(views.APIView):
+    """
+    POST /api/buddies/disconnect/<user_id>/
+    
+    Disconnects from a buddy by removing the BuddyMatch records.
+    The BuddyRequest history is preserved (or can be marked disconnected if status existed).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, user_id):
+        from .models import BuddyMatch
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        target_user = get_object_or_404(User, pk=user_id)
+        current_user = request.user
+        
+        # Delete symmetric matches
+        deleted_count, _ = BuddyMatch.objects.filter(
+            (models.Q(user=current_user) & models.Q(matched_user=target_user)) |
+            (models.Q(user=target_user) & models.Q(matched_user=current_user))
+        ).delete()
+        
+        if deleted_count == 0:
+            return Response(
+                {'detail': 'No active connection found with this user.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
+        return Response(
+            {'detail': 'Successfully disconnected.'},
+            status=status.HTTP_200_OK
+        )
+

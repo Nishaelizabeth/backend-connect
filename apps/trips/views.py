@@ -108,6 +108,35 @@ class LeaveTripAPIView(APIView):
         return Response({'detail': 'Successfully left the trip.'})
 
 
+class DashboardStatsView(APIView):
+    """
+    GET /api/trips/dashboard/stats/
+    Returns:
+        {
+            "trips_created": int,
+            "trips_joined": int
+        }
+    """
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        user = request.user
+        
+        # Count trips created by user
+        trips_created = Trip.objects.filter(creator=user).count()
+        
+        # Count trips joined (where user is accepted member but not creator)
+        trips_joined = TripMember.objects.filter(
+            user=user,
+            status=TripMember.MembershipStatus.ACCEPTED
+        ).exclude(trip__creator=user).count()
+        
+        return Response({
+            'trips_created': trips_created,
+            'trips_joined': trips_joined
+        })
+
+
 class InvitationsListAPIView(APIView):
     permission_classes = (IsAuthenticated,)
 

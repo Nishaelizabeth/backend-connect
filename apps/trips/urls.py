@@ -9,4 +9,5 @@ urlpatterns = [
     path('<int:pk>/accept/', views.AcceptTripAPIView.as_view(), name='trip-accept'),
     path('<int:pk>/reject/', views.RejectTripAPIView.as_view(), name='trip-reject'),
     path('<int:pk>/leave/', views.LeaveTripAPIView.as_view(), name='trip-leave'),
+    path('dashboard/stats/', views.DashboardStatsView.as_view(), name='dashboard-stats'),
 ]

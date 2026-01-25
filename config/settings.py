@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'apps.buddies.apps.BuddiesConfig',
     'apps.notifications.apps.NotificationsConfig',
     'apps.trips.apps.TripsConfig',
+    'apps.recommendations.apps.RecommendationsConfig',
 ]
 
 MIDDLEWARE = [

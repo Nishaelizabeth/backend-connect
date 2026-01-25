@@ -1,0 +1,262 @@
+[
+  {
+    "model": "recommendations.destination",
+    "pk": 1,
+    "fields": {
+      "name": "Eiffel Tower",
+      "city": "Paris",
+      "country": "France",
+      "category": "culture",
+      "description": "Iconic iron lattice tower on the Champ de Mars, a global cultural icon of France.",
+      "image_url": "https://images.unsplash.com/photo-1511739001486-6bfe10ce65f4",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 2,
+    "fields": {
+      "name": "Louvre Museum",
+      "city": "Paris",
+      "country": "France",
+      "category": "culture",
+      "description": "World's largest art museum and a historic monument in Paris.",
+      "image_url": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 3,
+    "fields": {
+      "name": "Le Marais Food Tour",
+      "city": "Paris",
+      "country": "France",
+      "category": "food",
+      "description": "Explore the historic Le Marais district through its culinary delights.",
+      "image_url": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 4,
+    "fields": {
+      "name": "Bois de Boulogne",
+      "city": "Paris",
+      "country": "France",
+      "category": "nature",
+      "description": "Large public park located along the western edge of Paris.",
+      "image_url": "https://images.unsplash.com/photo-1502602898657-3e91760cbb34",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 5,
+    "fields": {
+      "name": "Colosseum",
+      "city": "Rome",
+      "country": "Italy",
+      "category": "culture",
+      "description": "Ancient amphitheater in the center of Rome, the largest ever built.",
+      "image_url": "https://images.unsplash.com/photo-1552832230-c0197dd311b5",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 6,
+    "fields": {
+      "name": "Trastevere Food Walk",
+      "city": "Rome",
+      "country": "Italy",
+      "category": "food",
+      "description": "Discover authentic Roman cuisine in the charming Trastevere neighborhood.",
+      "image_url": "https://images.unsplash.com/photo-1529260830199-42c24126f198",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 7,
+    "fields": {
+      "name": "Villa Borghese Gardens",
+      "city": "Rome",
+      "country": "Italy",
+      "category": "nature",
+      "description": "Large landscape garden in the naturalistic English manner in Rome.",
+      "image_url": "https://images.unsplash.com/photo-1531572753322-ad063cecc140",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 8,
+    "fields": {
+      "name": "Mount Fuji",
+      "city": "Tokyo",
+      "country": "Japan",
+      "category": "nature",
+      "description": "Japan's tallest peak and an iconic symbol of the country.",
+      "image_url": "https://images.unsplash.com/photo-1490806843957-31f4c9a91c65",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 9,
+    "fields": {
+      "name": "Tsukiji Outer Market",
+      "city": "Tokyo",
+      "country": "Japan",
+      "category": "food",
+      "description": "Famous fish market offering fresh seafood and Japanese street food.",
+      "image_url": "https://images.unsplash.com/photo-1503899036084-c55cdd92da26",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 10,
+    "fields": {
+      "name": "Senso-ji Temple",
+      "city": "Tokyo",
+      "country": "Japan",
+      "category": "culture",
+      "description": "Ancient Buddhist temple in the Asakusa district, Tokyo's oldest temple.",
+      "image_url": "https://images.unsplash.com/photo-1545569341-9eb8b30979d9",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 11,
+    "fields": {
+      "name": "Central Park",
+      "city": "New York",
+      "country": "USA",
+      "category": "nature",
+      "description": "Urban park in Manhattan, one of the most visited attractions in the world.",
+      "image_url": "https://images.unsplash.com/photo-1534430480872-3498386e7856",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 12,
+    "fields": {
+      "name": "Metropolitan Museum of Art",
+      "city": "New York",
+      "country": "USA",
+      "category": "culture",
+      "description": "Largest art museum in the Americas with an encyclopedic collection.",
+      "image_url": "https://images.unsplash.com/photo-1580060405511-79c7b9d8f1d8",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 13,
+    "fields": {
+      "name": "Chelsea Market",
+      "city": "New York",
+      "country": "USA",
+      "category": "food",
+      "description": "Food hall and shopping mall in the Meatpacking District.",
+      "image_url": "https://images.unsplash.com/photo-1555396273-367ea4eb4db5",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 14,
+    "fields": {
+      "name": "Rock Climbing at Joshua Tree",
+      "city": "Los Angeles",
+      "country": "USA",
+      "category": "adventure",
+      "description": "World-class rock climbing destination near Los Angeles.",
+      "image_url": "https://images.unsplash.com/photo-1522163182402-834f871fd851",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 15,
+    "fields": {
+      "name": "Santorini Beach Resorts",
+      "city": "Santorini",
+      "country": "Greece",
+      "category": "leisure",
+      "description": "Luxurious beach resorts with stunning caldera views.",
+      "image_url": "https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 16,
+    "fields": {
+      "name": "Swiss Alps Hiking",
+      "city": "Zurich",
+      "country": "Switzerland",
+      "category": "adventure",
+      "description": "Breathtaking hiking trails through the Swiss Alps.",
+      "image_url": "https://images.unsplash.com/photo-1531973486364-5fa64260d75b",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 17,
+    "fields": {
+      "name": "Bali Spa Retreat",
+      "city": "Bali",
+      "country": "Indonesia",
+      "category": "leisure",
+      "description": "Traditional Balinese spa treatments and wellness retreats.",
+      "image_url": "https://images.unsplash.com/photo-1540555700478-4be289fbecef",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 18,
+    "fields": {
+      "name": "Amazon Rainforest Expedition",
+      "city": "Manaus",
+      "country": "Brazil",
+      "category": "adventure",
+      "description": "Guided expeditions through the world's largest rainforest.",
+      "image_url": "https://images.unsplash.com/photo-1516026672322-bc52d61a55d5",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 19,
+    "fields": {
+      "name": "Great Barrier Reef Diving",
+      "city": "Cairns",
+      "country": "Australia",
+      "category": "adventure",
+      "description": "World-famous diving and snorkeling at the Great Barrier Reef.",
+      "image_url": "https://images.unsplash.com/photo-1544551763-46a013bb70d5",
+      "is_active": true
+    }
+  },
+  {
+    "model": "recommendations.destination",
+    "pk": 20,
+    "fields": {
+      "name": "Kerala Backwaters",
+      "city": "Kochi",
+      "country": "India",
+      "category": "nature",
+      "description": "Serene houseboat cruises through Kerala's network of backwater canals.",
+      "image_url": "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944",
+      "is_active": true
+    }
+  }
+]

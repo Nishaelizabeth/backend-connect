@@ -8,4 +8,5 @@ urlpatterns = [
     path('invitations/', views.InvitationsListAPIView.as_view(), name='invitations-list'),
     path('<int:pk>/accept/', views.AcceptTripAPIView.as_view(), name='trip-accept'),
     path('<int:pk>/reject/', views.RejectTripAPIView.as_view(), name='trip-reject'),
+    path('<int:pk>/leave/', views.LeaveTripAPIView.as_view(), name='trip-leave'),
 ]

@@ -82,11 +82,18 @@ class TripCreateSerializer(serializers.ModelSerializer):
             )
 
             # Notification: trip invitation
-            Notification.objects.create(
-                user=user,
-                type='trip_invitation',
-                message=f"{creator.get_full_name()} invited you to trip '{trip.title}'.",
-                related_object_id=trip.id
+            # Notification: trip invitation sent (for creator)
+            Notification.create_trip_invite_sent(
+                sender=creator,
+                receiver=user,
+                trip=trip
+            )
+
+            # Notification: trip invitation received (for invited user)
+            Notification.create_trip_invite_received(
+                receiver=user,
+                sender=creator,
+                trip=trip
             )
 
         return trip

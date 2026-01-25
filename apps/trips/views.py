@@ -49,11 +49,10 @@ class AcceptTripAPIView(APIView):
         membership.save()
 
         # Notify creator
-        Notification.objects.create(
-            user=trip.creator,
-            type='trip_invitation_accepted',
-            message=f"{request.user.get_full_name()} accepted your trip invitation to '{trip.title}'.",
-            related_object_id=trip.id
+        Notification.create_trip_invite_accepted(
+            sender=trip.creator,
+            receiver=request.user,
+            trip=trip
         )
 
         return Response({'detail': 'Invitation accepted.'})
@@ -76,14 +75,37 @@ class RejectTripAPIView(APIView):
         membership.save()
 
         # Notify creator
-        Notification.objects.create(
-            user=trip.creator,
-            type='trip_invitation_rejected',
-            message=f"{request.user.get_full_name()} declined your trip invitation to '{trip.title}'.",
-            related_object_id=trip.id
+        Notification.create_trip_invite_rejected(
+            sender=trip.creator,
+            receiver=request.user,
+            trip=trip
         )
 
         return Response({'detail': 'Invitation rejected.'})
+
+
+class LeaveTripAPIView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, pk):
+        trip = get_object_or_404(Trip, pk=pk)
+        try:
+            membership = TripMember.objects.get(trip=trip, user=request.user)
+        except TripMember.DoesNotExist:
+            return Response({'detail': 'You are not a member of this trip.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if membership.role == TripMember.Role.CREATOR:
+            return Response({'detail': 'Trip creator cannot leave the trip. Delete the trip instead.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Notify creator before deleting membership
+        Notification.create_member_left_trip(
+            user=trip.creator,
+            member_name=request.user.get_full_name(),
+            trip=trip
+        )
+
+        membership.delete()
+        return Response({'detail': 'Successfully left the trip.'})
 
 
 class InvitationsListAPIView(APIView):

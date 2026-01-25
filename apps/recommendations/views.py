@@ -74,6 +74,15 @@ class SaveDestinationView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        from apps.notifications.models import Notification
+        
+        # Create notification
+        Notification.create_destination_saved(
+            user=request.user,
+            destination=destination,
+            trip=trip
+        )
+
         response_serializer = TripSavedDestinationSerializer(saved_destination)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 

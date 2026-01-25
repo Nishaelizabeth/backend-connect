@@ -20,6 +20,12 @@ class Notification(models.Model):
         BUDDY_REQUEST_RECEIVED = 'buddy_request_received', 'Buddy Request Received'
         BUDDY_REQUEST_ACCEPTED = 'buddy_request_accepted', 'Buddy Request Accepted'
         BUDDY_REQUEST_REJECTED = 'buddy_request_rejected', 'Buddy Request Rejected'
+        TRIP_INVITE_SENT = 'trip_invite_sent', 'Trip Invite Sent'
+        TRIP_INVITE_RECEIVED = 'trip_invite_received', 'Trip Invite Received'
+        TRIP_INVITE_ACCEPTED = 'trip_invite_accepted', 'Trip Invite Accepted'
+        TRIP_INVITE_REJECTED = 'trip_invite_rejected', 'Trip Invite Rejected'
+        DESTINATION_SAVED = 'destination_saved', 'Destination Saved'
+        MEMBER_LEFT_TRIP = 'member_left_trip', 'Member Left Trip'
     
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -42,7 +48,7 @@ class Notification(models.Model):
     related_object_id = models.IntegerField(
         null=True,
         blank=True,
-        help_text='ID of the related object (e.g., BuddyRequest ID)'
+        help_text='ID of the related object (e.g., BuddyRequest ID, Trip ID)'
     )
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -85,4 +91,64 @@ class Notification(models.Model):
             type=cls.NotificationType.BUDDY_REQUEST_REJECTED,
             message=f"{receiver.full_name} declined your buddy request.",
             related_object_id=buddy_request_id
+        )
+
+    @classmethod
+    def create_trip_invite_sent(cls, sender, receiver, trip):
+        """Create notification for sender when they send a trip invite."""
+        return cls.objects.create(
+            user=sender,
+            type=cls.NotificationType.TRIP_INVITE_SENT,
+            message=f"You invited {receiver.full_name} to {trip.title}.",
+            related_object_id=trip.id
+        )
+
+    @classmethod
+    def create_trip_invite_received(cls, receiver, sender, trip):
+        """Create notification for receiver when they get a trip invite."""
+        return cls.objects.create(
+            user=receiver,
+            type=cls.NotificationType.TRIP_INVITE_RECEIVED,
+            message=f"{sender.full_name} invited you to join {trip.title}.",
+            related_object_id=trip.id
+        )
+
+    @classmethod
+    def create_trip_invite_accepted(cls, sender, receiver, trip):
+        """Create notification for sender (creator) when invite is accepted."""
+        return cls.objects.create(
+            user=sender,
+            type=cls.NotificationType.TRIP_INVITE_ACCEPTED,
+            message=f"{receiver.full_name} accepted your invitation to {trip.title}.",
+            related_object_id=trip.id
+        )
+
+    @classmethod
+    def create_trip_invite_rejected(cls, sender, receiver, trip):
+        """Create notification for sender (creator) when invite is rejected."""
+        return cls.objects.create(
+            user=sender,
+            type=cls.NotificationType.TRIP_INVITE_REJECTED,
+            message=f"{receiver.full_name} declined your invitation to {trip.title}.",
+            related_object_id=trip.id
+        )
+
+    @classmethod
+    def create_destination_saved(cls, user, destination, trip):
+        """Create notification for destination save event."""
+        return cls.objects.create(
+            user=user,
+            type=cls.NotificationType.DESTINATION_SAVED,
+            message=f"{destination.name} was added to {trip.title}.",
+            related_object_id=destination.id
+        )
+
+    @classmethod
+    def create_member_left_trip(cls, user, member_name, trip):
+        """Create notification when a member leaves the trip."""
+        return cls.objects.create(
+            user=user,
+            type=cls.NotificationType.MEMBER_LEFT_TRIP,
+            message=f"{member_name} left {trip.title}.",
+            related_object_id=trip.id
         )

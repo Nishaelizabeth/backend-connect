@@ -12,6 +12,12 @@ class Trip(models.Model):
     destination = models.CharField(max_length=200)
     start_date = models.DateField()
     end_date = models.DateField()
+    cover_image = models.URLField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text='URL of the trip cover image'
+    )
     creator = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

@@ -24,7 +24,9 @@ class TripCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Trip
-        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'invited_user_ids')
+    class Meta:
+        model = Trip
+        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'invited_user_ids', 'cover_image')
 
     def validate(self, data):
         start = data.get('start_date')
@@ -104,7 +106,9 @@ class TripListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Trip
-        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'member_count')
+    class Meta:
+        model = Trip
+        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'member_count', 'cover_image')
 
     def get_member_count(self, obj):
         return obj.members.filter(status=TripMember.MembershipStatus.ACCEPTED).count()
@@ -115,7 +119,9 @@ class TripDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Trip
-        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'created_at', 'members')
+    class Meta:
+        model = Trip
+        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'created_at', 'members', 'cover_image')
 
 
 class TripInvitationSerializer(serializers.Serializer):

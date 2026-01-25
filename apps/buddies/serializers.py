@@ -6,6 +6,8 @@ This module defines serializers for buddy matching and buddy requests.
 
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model
+from django.db import models
 from .models import BuddyRequest
 
 User = get_user_model()
@@ -38,6 +40,12 @@ class BuddyMatchSerializer(serializers.Serializer):
     match_score = serializers.FloatField(
         help_text='Compatibility score from 0-100'
     )
+    request_status = serializers.SerializerMethodField(
+        help_text='Current status of buddy request: none, pending_outgoing, pending_incoming, accepted, rejected'
+    )
+    request_id = serializers.SerializerMethodField(
+        help_text='ID of the associated buddy request if any'
+    )
 
     class Meta:
         fields = [
@@ -46,7 +54,67 @@ class BuddyMatchSerializer(serializers.Serializer):
             'matched_user_email',
             'shared_interests',
             'match_score',
+            'request_status',
+            'request_id',
         ]
+
+    def get_request_status(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return 'none'
+        
+        user = request.user
+        matched_user = obj['user']
+        
+        # Check if they are already matched/accepted
+        # The BuddyMatch check is not enough because we need the Request status for the UI buttons
+        # But if they appeared in get_buddy_matches, they might have a match record?
+        # get_buddy_matches excludes current user.
+        
+        # We need to find the BuddyRequest
+        # Note: This is N+1, but optimization can be done later if needed.
+        # Check outgoing
+        from .models import BuddyRequest
+        
+        buddy_req = BuddyRequest.objects.filter(
+            (models.Q(sender=user) & models.Q(receiver=matched_user)) |
+            (models.Q(sender=matched_user) & models.Q(receiver=user))
+        ).first()
+        
+        if not buddy_req:
+            return 'none'
+            
+        if buddy_req.status == BuddyRequest.Status.ACCEPTED:
+            return 'accepted'
+        if buddy_req.status == BuddyRequest.Status.REJECTED:
+             # If rejected, can they request again? 
+             # For now return 'rejected' or 'none' depending on business logic. 
+             # Let's return 'rejected' so UI can decide or 'none' to allow retry.
+             # User request was "card should have cancel request button".
+             return 'rejected' 
+        
+        if buddy_req.status == BuddyRequest.Status.PENDING:
+            if buddy_req.sender == user:
+                return 'pending_outgoing'
+            return 'pending_incoming'
+            
+        return 'none'
+
+    def get_request_id(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return None
+            
+        user = request.user
+        matched_user = obj['user']
+        
+        from .models import BuddyRequest
+        buddy_req = BuddyRequest.objects.filter(
+            (models.Q(sender=user) & models.Q(receiver=matched_user)) |
+            (models.Q(sender=matched_user) & models.Q(receiver=user))
+        ).first()
+        
+        return buddy_req.id if buddy_req else None
 
 
 class BuddyRequestSerializer(serializers.ModelSerializer):

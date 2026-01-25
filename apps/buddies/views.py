@@ -57,7 +57,7 @@ class BuddyMatchListView(views.APIView):
         )
 
         # Serialize and return
-        serializer = BuddyMatchSerializer(matches, many=True)
+        serializer = BuddyMatchSerializer(matches, many=True, context={'request': request})
         return Response({
             'count': len(matches),
             'results': serializer.data

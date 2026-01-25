@@ -217,6 +217,23 @@ class BuddyMatchingService:
 
         return matches[:limit]
 
+    def calculate_score_for_user(self, other_user):
+        """
+        Calculate match score with a specific user.
+        
+        Args:
+            other_user: User instance to match with
+            
+        Returns:
+            Float score
+        """
+        try:
+            other_pref = Preference.objects.prefetch_related('interests').get(user=other_user)
+            score, _ = self._calculate_match_score(other_pref)
+            return score
+        except Preference.DoesNotExist:
+            return 0.0
+
 
 def get_buddy_matches(user, limit=10, min_score=0.0):
     """

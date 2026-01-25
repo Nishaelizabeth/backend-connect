@@ -163,18 +163,23 @@ class BuddyRequestAcceptView(views.APIView):
             # Create symmetric BuddyMatch records
             from .models import BuddyMatch
             
+            # Calculate match score
+            from .services import BuddyMatchingService
+            service = BuddyMatchingService(updated_request.sender)
+            match_score = service.calculate_score_for_user(updated_request.receiver)
+
             # Create match A -> B
             BuddyMatch.objects.get_or_create(
                 user=updated_request.sender,
                 matched_user=updated_request.receiver,
-                defaults={'match_score': 0.0} # Default score, can be computed later
+                defaults={'match_score': match_score}
             )
             
             # Create match B -> A
             BuddyMatch.objects.get_or_create(
                 user=updated_request.receiver,
                 matched_user=updated_request.sender,
-                defaults={'match_score': 0.0}
+                defaults={'match_score': match_score}
             )
             
             # Create notification for sender that their request was accepted

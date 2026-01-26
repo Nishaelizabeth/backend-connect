@@ -103,12 +103,13 @@ class TripCreateSerializer(serializers.ModelSerializer):
 
 class TripListSerializer(serializers.ModelSerializer):
     member_count = serializers.SerializerMethodField()
+    creator_id = serializers.IntegerField(source='creator.id', read_only=True)
 
     class Meta:
         model = Trip
     class Meta:
         model = Trip
-        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'member_count', 'cover_image')
+        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'member_count', 'cover_image', 'creator_id')
 
     def get_member_count(self, obj):
         return obj.members.filter(status=TripMember.MembershipStatus.ACCEPTED).count()

@@ -11,6 +11,7 @@ User = get_user_model()
 
 
 class TripMemberNestedSerializer(serializers.Serializer):
+    membership_id = serializers.IntegerField(source='id')
     id = serializers.IntegerField(source='user.id')
     full_name = serializers.CharField(source='user.full_name')
     email = serializers.EmailField(source='user.email')
@@ -117,12 +118,13 @@ class TripListSerializer(serializers.ModelSerializer):
 
 class TripDetailSerializer(serializers.ModelSerializer):
     members = TripMemberNestedSerializer(many=True)
+    creator_id = serializers.IntegerField(source='creator.id', read_only=True)
 
     class Meta:
         model = Trip
     class Meta:
         model = Trip
-        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'created_at', 'members', 'cover_image')
+        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'created_at', 'members', 'cover_image', 'creator_id')
 
 
 class TripInvitationSerializer(serializers.Serializer):

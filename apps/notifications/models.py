@@ -26,6 +26,8 @@ class Notification(models.Model):
         TRIP_INVITE_REJECTED = 'trip_invite_rejected', 'Trip Invite Rejected'
         DESTINATION_SAVED = 'destination_saved', 'Destination Saved'
         MEMBER_LEFT_TRIP = 'member_left_trip', 'Member Left Trip'
+        TRIP_MEMBER_REMOVED = 'trip_member_removed', 'Trip Member Removed'
+        TRIP_CANCELLED = 'trip_cancelled', 'Trip Cancelled'
     
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -151,4 +153,25 @@ class Notification(models.Model):
             type=cls.NotificationType.MEMBER_LEFT_TRIP,
             message=f"{member_name} left {trip.title}.",
             related_object_id=trip.id
+        )
+
+    @classmethod
+    def create_trip_member_removed(cls, user, trip):
+        """Create notification for member removed from trip."""
+        return cls.objects.create(
+            user=user,
+            type=cls.NotificationType.TRIP_MEMBER_REMOVED,
+            message=f"You have been removed from the trip {trip.title}.",
+            related_object_id=trip.id
+        )
+
+    @classmethod
+    def create_trip_cancelled(cls, user, trip_title):
+        """Create notification for trip cancellation."""
+        return cls.objects.create(
+            user=user,
+            type=cls.NotificationType.TRIP_CANCELLED,
+            message=f"The trip {trip_title} has been cancelled by the creator.",
+            # No related object ID since trip is deleted
+            related_object_id=None
         )

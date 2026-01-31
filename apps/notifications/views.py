@@ -48,3 +48,22 @@ class MarkAllNotificationsReadView(views.APIView):
             'message': 'All notifications marked as read.',
             'updated_count': updated_count
         }, status=status.HTTP_200_OK)
+
+
+class ClearAllNotificationsView(views.APIView):
+    """
+    DELETE /api/notifications/clear-all/
+    
+    Deletes all notifications for the authenticated user.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request):
+        deleted_count, _ = Notification.objects.filter(
+            user=request.user
+        ).delete()
+        
+        return Response({
+            'message': 'All notifications cleared.',
+            'deleted_count': deleted_count
+        }, status=status.HTTP_200_OK)

@@ -20,6 +20,10 @@ class BuddyMatch(models.Model):
     budget range, travel style, and trip duration preferences.
     """
     
+    class Status(models.TextChoices):
+        CONNECTED = 'connected', _('Connected')
+        DISCONNECTED = 'disconnected', _('Disconnected')
+    
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -35,6 +39,12 @@ class BuddyMatch(models.Model):
     match_score = models.FloatField(
         validators=[MinValueValidator(0.0), MaxValueValidator(100.0)],
         help_text=_('Compatibility score from 0 to 100')
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.CONNECTED,
+        help_text=_('Connection status')
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

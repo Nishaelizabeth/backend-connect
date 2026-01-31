@@ -66,16 +66,21 @@ class BuddyMatchSerializer(serializers.Serializer):
         user = request.user
         matched_user = obj['user']
         
-        # Check if they are already matched/accepted
-        # The BuddyMatch check is not enough because we need the Request status for the UI buttons
-        # But if they appeared in get_buddy_matches, they might have a match record?
-        # get_buddy_matches excludes current user.
+        # Check if they have a connected BuddyMatch
+        from .models import BuddyRequest, BuddyMatch
         
-        # We need to find the BuddyRequest
-        # Note: This is N+1, but optimization can be done later if needed.
-        # Check outgoing
-        from .models import BuddyRequest
+        # Check for existing match (connected or disconnected)
+        buddy_match = BuddyMatch.objects.filter(
+            (models.Q(user=user) & models.Q(matched_user=matched_user)) |
+            (models.Q(user=matched_user) & models.Q(matched_user=user))
+        ).first()
         
+        # If they have a connected match, return 'accepted'
+        if buddy_match and buddy_match.status == BuddyMatch.Status.CONNECTED:
+            return 'accepted'
+        
+        # If they were disconnected, treat as if no connection exists
+        # Check for buddy requests
         buddy_req = BuddyRequest.objects.filter(
             (models.Q(sender=user) & models.Q(receiver=matched_user)) |
             (models.Q(sender=matched_user) & models.Q(receiver=user))
@@ -85,12 +90,11 @@ class BuddyMatchSerializer(serializers.Serializer):
             return 'none'
             
         if buddy_req.status == BuddyRequest.Status.ACCEPTED:
+            # They accepted but might have disconnected
+            if buddy_match and buddy_match.status == BuddyMatch.Status.DISCONNECTED:
+                return 'none'
             return 'accepted'
         if buddy_req.status == BuddyRequest.Status.REJECTED:
-             # If rejected, can they request again? 
-             # For now return 'rejected' or 'none' depending on business logic. 
-             # Let's return 'rejected' so UI can decide or 'none' to allow retry.
-             # User request was "card should have cancel request button".
              return 'rejected' 
         
         if buddy_req.status == BuddyRequest.Status.PENDING:
@@ -167,24 +171,50 @@ class BuddyRequestCreateSerializer(serializers.Serializer):
         if sender.id == value:
             raise serializers.ValidationError("You cannot send a request to yourself.")
         
+        # Check if they have a disconnected buddy match
+        from .models import BuddyMatch
+        buddy_match = BuddyMatch.objects.filter(
+            (models.Q(user=sender) & models.Q(matched_user=receiver)) |
+            (models.Q(user=receiver) & models.Q(matched_user=sender))
+        ).first()
+        
+        # If they were connected before, check if they're disconnected now
+        if buddy_match and buddy_match.status == BuddyMatch.Status.DISCONNECTED:
+            # Delete old accepted request if exists, to allow new request
+            BuddyRequest.objects.filter(
+                (models.Q(sender=sender) & models.Q(receiver=receiver)) |
+                (models.Q(sender=receiver) & models.Q(receiver=sender))
+            ).delete()
+            # Allow the new request
+            return value
+        
         # Check for existing request (in either direction)
         existing_request = BuddyRequest.objects.filter(
             sender=sender, receiver=receiver
         ).first()
         
         if existing_request:
-            raise serializers.ValidationError(
-                f"You have already sent a request to this user. Status: {existing_request.status}"
-            )
+            # Only block if the request is pending or accepted (and not disconnected)
+            if existing_request.status == BuddyRequest.Status.PENDING:
+                raise serializers.ValidationError(
+                    f"You have already sent a request to this user. Status: {existing_request.status}"
+                )
+            elif existing_request.status == BuddyRequest.Status.ACCEPTED:
+                # Check if they're still connected
+                if buddy_match and buddy_match.status == BuddyMatch.Status.CONNECTED:
+                    raise serializers.ValidationError(
+                        f"You are already connected with this user."
+                    )
+                # If not connected, allow new request (shouldn't reach here due to earlier check)
         
         # Check for reverse request
         reverse_request = BuddyRequest.objects.filter(
             sender=receiver, receiver=sender
         ).first()
         
-        if reverse_request:
+        if reverse_request and reverse_request.status == BuddyRequest.Status.PENDING:
             raise serializers.ValidationError(
-                f"This user has already sent you a request. Status: {reverse_request.status}"
+                f"This user has already sent you a request. Please accept or reject it first."
             )
         
         return value

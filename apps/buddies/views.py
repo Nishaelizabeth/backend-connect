@@ -242,9 +242,10 @@ class AcceptedBuddiesListView(views.APIView):
     def get(self, request):
         from .models import BuddyMatch
         
-        # Get all symmetric matches for the user
+        # Get all connected matches for the user (excluding disconnected)
         matches = BuddyMatch.objects.filter(
-            user=request.user
+            user=request.user,
+            status=BuddyMatch.Status.CONNECTED
         ).select_related('matched_user')
         
         buddies = []
@@ -293,8 +294,8 @@ class DisconnectBuddyView(views.APIView):
     """
     POST /api/buddies/disconnect/<user_id>/
     
-    Disconnects from a buddy by removing the BuddyMatch records.
-    The BuddyRequest history is preserved (or can be marked disconnected if status existed).
+    Disconnects from a buddy by marking the BuddyMatch records as disconnected.
+    Sends a notification to the other user.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -306,17 +307,23 @@ class DisconnectBuddyView(views.APIView):
         target_user = get_object_or_404(User, pk=user_id)
         current_user = request.user
         
-        # Delete symmetric matches
-        deleted_count, _ = BuddyMatch.objects.filter(
+        # Mark symmetric matches as disconnected
+        updated_count = BuddyMatch.objects.filter(
             (models.Q(user=current_user) & models.Q(matched_user=target_user)) |
             (models.Q(user=target_user) & models.Q(matched_user=current_user))
-        ).delete()
+        ).update(status=BuddyMatch.Status.DISCONNECTED)
         
-        if deleted_count == 0:
+        if updated_count == 0:
             return Response(
                 {'detail': 'No active connection found with this user.'},
                 status=status.HTTP_404_NOT_FOUND
             )
+        
+        # Send notification to the other user
+        Notification.create_buddy_disconnected(
+            disconnected_user=target_user,
+            disconnector=current_user
+        )
             
         return Response(
             {'detail': 'Successfully disconnected.'},

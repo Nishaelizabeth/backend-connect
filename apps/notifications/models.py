@@ -20,6 +20,7 @@ class Notification(models.Model):
         BUDDY_REQUEST_RECEIVED = 'buddy_request_received', 'Buddy Request Received'
         BUDDY_REQUEST_ACCEPTED = 'buddy_request_accepted', 'Buddy Request Accepted'
         BUDDY_REQUEST_REJECTED = 'buddy_request_rejected', 'Buddy Request Rejected'
+        BUDDY_DISCONNECTED = 'buddy_disconnected', 'Buddy Disconnected'
         TRIP_INVITE_SENT = 'trip_invite_sent', 'Trip Invite Sent'
         TRIP_INVITE_RECEIVED = 'trip_invite_received', 'Trip Invite Received'
         TRIP_INVITE_ACCEPTED = 'trip_invite_accepted', 'Trip Invite Accepted'
@@ -103,6 +104,18 @@ class Notification(models.Model):
             type=cls.NotificationType.BUDDY_REQUEST_REJECTED,
             message=f"{receiver.full_name} declined your buddy request.",
             related_object_id=buddy_request_id
+        )
+
+    @classmethod
+    def create_buddy_disconnected(cls, disconnected_user, disconnector):
+        """Create notification for user when a buddy disconnects from them."""
+        return cls.objects.create(
+            user=disconnected_user,
+            type=cls.NotificationType.BUDDY_DISCONNECTED,
+            message=f"{disconnector.full_name} disconnected from you.",
+            metadata={
+                'disconnector_id': disconnector.id,
+            }
         )
 
     @classmethod

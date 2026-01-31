@@ -52,6 +52,12 @@ class Notification(models.Model):
         blank=True,
         help_text='ID of the related object (e.g., BuddyRequest ID, Trip ID)'
     )
+    metadata = models.JSONField(
+        null=True,
+        blank=True,
+        default=dict,
+        help_text='Additional metadata for the notification (e.g., sender_id, buddy_request_id)'
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         help_text='When the notification was created'
@@ -72,7 +78,11 @@ class Notification(models.Model):
             user=receiver,
             type=cls.NotificationType.BUDDY_REQUEST_RECEIVED,
             message=f"{sender.full_name} sent you a buddy request.",
-            related_object_id=buddy_request_id
+            related_object_id=buddy_request_id,
+            metadata={
+                'buddy_request_id': buddy_request_id,
+                'sender_id': sender.id,
+            }
         )
 
     @classmethod

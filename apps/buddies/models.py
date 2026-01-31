@@ -44,12 +44,6 @@ class BuddyMatch(models.Model):
         verbose_name_plural = _('Buddy Matches')
         unique_together = ('user', 'matched_user')
         ordering = ['-match_score', '-created_at']
-        constraints = [
-            models.CheckConstraint(
-                condition=~models.Q(user=models.F('matched_user')),
-                name='prevent_self_match'
-            )
-        ]
 
     def __str__(self):
         return f"{self.user.email} → {self.matched_user.email} ({self.match_score:.1f}%)"
@@ -94,12 +88,6 @@ class BuddyRequest(models.Model):
         verbose_name_plural = _('Buddy Requests')
         unique_together = ('sender', 'receiver')
         ordering = ['-created_at']
-        constraints = [
-            models.CheckConstraint(
-                condition=~models.Q(sender=models.F('receiver')),
-                name='prevent_self_request'
-            )
-        ]
 
     def __str__(self):
         return f"{self.sender.email} → {self.receiver.email} ({self.status})"

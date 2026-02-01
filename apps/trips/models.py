@@ -9,7 +9,17 @@ class Trip(models.Model):
         COMPLETED = 'completed', 'Completed'
 
     title = models.CharField(max_length=200)
-    destination = models.CharField(max_length=200)
+    
+    # Legacy field - deprecated, kept for backward compatibility
+    destination = models.CharField(max_length=200, blank=True, default='')
+    
+    # New precise location fields
+    city = models.CharField(max_length=100, blank=True, default='')
+    region = models.CharField(max_length=100, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, default='')
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    
     start_date = models.DateField()
     end_date = models.DateField()
     cover_image = models.URLField(
@@ -31,6 +41,21 @@ class Trip(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.start_date} → {self.end_date})"
+    
+    @property
+    def display_destination(self) -> str:
+        """Returns formatted destination string for display."""
+        if self.city and self.country:
+            if self.region:
+                return f"{self.city}, {self.region}, {self.country}"
+            return f"{self.city}, {self.country}"
+        return self.destination or ''
+    
+    def save(self, *args, **kwargs):
+        # Auto-populate legacy destination field for backward compatibility
+        if self.city and self.country and not self.destination:
+            self.destination = self.display_destination
+        super().save(*args, **kwargs)
 
 
 class TripMember(models.Model):

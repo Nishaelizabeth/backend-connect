@@ -11,6 +11,33 @@ from .serializers import TripCreateSerializer, TripListSerializer, TripDetailSer
 from apps.notifications.models import Notification
 
 
+def geocode_trip_location(trip: Trip) -> None:
+    """
+    Attempt to geocode trip location if lat/lon not provided.
+    Uses OpenTripMap geoname API.
+    """
+    if trip.latitude and trip.longitude:
+        return  # Already has coordinates
+    
+    if not trip.city or not trip.country:
+        return  # Cannot geocode without city and country
+    
+    try:
+        from apps.recommendations.services.opentripmap import opentripmap_service
+        
+        # Try city, country format for best results
+        search_term = f"{trip.city}, {trip.country}"
+        coords = opentripmap_service.get_place_coordinates(search_term)
+        
+        if coords:
+            trip.latitude = coords.get('lat')
+            trip.longitude = coords.get('lon')
+            trip.save(update_fields=['latitude', 'longitude'])
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to geocode trip location: {e}")
+
+
 class TripListCreateAPIView(APIView):
     permission_classes = (IsAuthenticated,)
 
@@ -27,6 +54,10 @@ class TripListCreateAPIView(APIView):
         serializer = TripCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         trip = serializer.save()
+        
+        # Attempt geocoding if coordinates not provided
+        geocode_trip_location(trip)
+        
         out = TripDetailSerializer(trip)
         return Response(out.data, status=status.HTTP_201_CREATED)
 

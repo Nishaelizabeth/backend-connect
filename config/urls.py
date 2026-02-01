@@ -25,4 +25,5 @@ urlpatterns = [
     path('api/notifications/', include('apps.notifications.urls', namespace='notifications')),
     path('api/trips/', include('apps.trips.urls', namespace='trips')),
     path('api/trips/', include('apps.recommendations.urls', namespace='recommendations')),
+    path('api/trips/', include('apps.chat.urls', namespace='chat')),
 ]

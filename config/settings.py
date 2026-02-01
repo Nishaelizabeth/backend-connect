@@ -37,6 +37,7 @@ ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',') if os.getenv('ALLOWED_
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',  # Must be first for ASGI
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -48,6 +49,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'channels',
     
     # Local apps
     'apps.accounts.apps.AccountsConfig',
@@ -56,6 +58,7 @@ INSTALLED_APPS = [
     'apps.notifications.apps.NotificationsConfig',
     'apps.trips.apps.TripsConfig',
     'apps.recommendations.apps.RecommendationsConfig',
+    'apps.chat.apps.ChatConfig',
 ]
 
 MIDDLEWARE = [
@@ -88,6 +91,22 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
+
+# =============================================================================
+# CHANNEL LAYERS (WebSocket)
+# =============================================================================
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        # For production, use Redis:
+        # 'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        # 'CONFIG': {
+        #     'hosts': [('127.0.0.1', 6379)],
+        # },
+    },
+}
 
 
 # Database
@@ -220,3 +239,19 @@ CORS_ALLOW_CREDENTIALS = True
 # =============================================================================
 
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+
+
+# =============================================================================
+# OPENTRIPMAP API SETTINGS
+# =============================================================================
+
+OPENTRIPMAP_API_KEY = os.getenv(
+    'OPENTRIPMAP_API_KEY', 
+    '5ae2e3f221c38a28845f05b6e59e584ccfd26855d205a83c5d74da4c'
+)
+
+# =============================================================================
+# UNSPLASH API SETTINGS
+# =============================================================================
+
+UNSPLASH_ACCESS_KEY = os.getenv('UNSPLASH_ACCESS_KEY', '')

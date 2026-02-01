@@ -246,14 +246,26 @@ class AcceptedBuddiesListView(views.APIView):
         matches = BuddyMatch.objects.filter(
             user=request.user,
             status=BuddyMatch.Status.CONNECTED
-        ).select_related('matched_user')
+        ).select_related('matched_user', 'matched_user__preferences')
         
         buddies = []
         for match in matches:
+            # Get primary interest (first interest if available)
+            primary_interest = None
+            try:
+                if hasattr(match.matched_user, 'preferences'):
+                    first_interest = match.matched_user.preferences.interests.first()
+                    if first_interest:
+                        primary_interest = first_interest.name
+            except Exception:
+                pass
+            
             buddies.append({
                 'id': match.matched_user.id,
                 'full_name': match.matched_user.full_name,
                 'email': match.matched_user.email,
+                'avatar_url': None,  # Add avatar support when available
+                'primary_interest': primary_interest,
                 'match_score': match.match_score,
                 'connected_at': match.created_at,
             })

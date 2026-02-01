@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     TripRecommendationsView,
+    TripGroupAnalysisView,
     SaveDestinationView,
     TripSavedDestinationsView,
 )
@@ -12,6 +13,11 @@ urlpatterns = [
         '<int:trip_id>/recommendations/',
         TripRecommendationsView.as_view(),
         name='trip-recommendations'
+    ),
+    path(
+        '<int:trip_id>/group-analysis/',
+        TripGroupAnalysisView.as_view(),
+        name='group-analysis'
     ),
     path(
         '<int:trip_id>/save-destination/',

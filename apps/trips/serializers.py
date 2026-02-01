@@ -22,12 +22,19 @@ class TripMemberNestedSerializer(serializers.Serializer):
 
 class TripCreateSerializer(serializers.ModelSerializer):
     invited_user_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    city = serializers.CharField(max_length=100, required=True)
+    region = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)
+    country = serializers.CharField(max_length=100, required=True)
+    latitude = serializers.FloatField(required=False, allow_null=True)
+    longitude = serializers.FloatField(required=False, allow_null=True)
 
     class Meta:
         model = Trip
-    class Meta:
-        model = Trip
-        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'invited_user_ids', 'cover_image')
+        fields = (
+            'id', 'title', 'city', 'region', 'country', 
+            'latitude', 'longitude', 'start_date', 'end_date', 
+            'invited_user_ids', 'cover_image'
+        )
 
     def validate(self, data):
         start = data.get('start_date')
@@ -58,6 +65,16 @@ class TripCreateSerializer(serializers.ModelSerializer):
         invited = validated_data.pop('invited_user_ids', [])
         request = self.context.get('request')
         creator = request.user
+        
+        # Build destination string for backward compatibility
+        city = validated_data.get('city', '')
+        region = validated_data.get('region', '')
+        country = validated_data.get('country', '')
+        
+        if region:
+            validated_data['destination'] = f"{city}, {region}, {country}"
+        else:
+            validated_data['destination'] = f"{city}, {country}"
 
         trip = Trip.objects.create(creator=creator, **validated_data)
 
@@ -84,7 +101,6 @@ class TripCreateSerializer(serializers.ModelSerializer):
                 status=TripMember.MembershipStatus.INVITED
             )
 
-            # Notification: trip invitation
             # Notification: trip invitation sent (for creator)
             Notification.create_trip_invite_sent(
                 sender=creator,
@@ -105,36 +121,54 @@ class TripCreateSerializer(serializers.ModelSerializer):
 class TripListSerializer(serializers.ModelSerializer):
     member_count = serializers.SerializerMethodField()
     creator_id = serializers.IntegerField(source='creator.id', read_only=True)
+    destination = serializers.SerializerMethodField()
 
     class Meta:
         model = Trip
-    class Meta:
-        model = Trip
-        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'member_count', 'cover_image', 'creator_id')
+        fields = (
+            'id', 'title', 'destination', 'city', 'region', 'country',
+            'latitude', 'longitude', 'start_date', 'end_date', 
+            'status', 'member_count', 'cover_image', 'creator_id'
+        )
 
     def get_member_count(self, obj):
         return obj.members.filter(status=TripMember.MembershipStatus.ACCEPTED).count()
+    
+    def get_destination(self, obj):
+        return obj.display_destination or obj.destination
 
 
 class TripDetailSerializer(serializers.ModelSerializer):
     members = TripMemberNestedSerializer(many=True)
     creator_id = serializers.IntegerField(source='creator.id', read_only=True)
+    destination = serializers.SerializerMethodField()
 
     class Meta:
         model = Trip
-    class Meta:
-        model = Trip
-        fields = ('id', 'title', 'destination', 'start_date', 'end_date', 'status', 'created_at', 'members', 'cover_image', 'creator_id')
+        fields = (
+            'id', 'title', 'destination', 'city', 'region', 'country',
+            'latitude', 'longitude', 'start_date', 'end_date', 
+            'status', 'created_at', 'members', 'cover_image', 'creator_id'
+        )
+    
+    def get_destination(self, obj):
+        return obj.display_destination or obj.destination
 
 
 class TripInvitationSerializer(serializers.Serializer):
     membership_id = serializers.IntegerField(source='id')
     trip_id = serializers.IntegerField(source='trip.id')
     title = serializers.CharField(source='trip.title')
-    destination = serializers.CharField(source='trip.destination')
+    destination = serializers.SerializerMethodField()
+    city = serializers.CharField(source='trip.city')
+    region = serializers.CharField(source='trip.region')
+    country = serializers.CharField(source='trip.country')
     start_date = serializers.DateField(source='trip.start_date')
     end_date = serializers.DateField(source='trip.end_date')
     creator_id = serializers.IntegerField(source='trip.creator.id')
     creator_name = serializers.CharField(source='trip.creator.full_name')
     status = serializers.CharField()
     joined_at = serializers.DateTimeField(allow_null=True)
+    
+    def get_destination(self, obj):
+        return obj.trip.display_destination or obj.trip.destination

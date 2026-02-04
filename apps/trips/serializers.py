@@ -122,6 +122,7 @@ class TripListSerializer(serializers.ModelSerializer):
     member_count = serializers.SerializerMethodField()
     creator_id = serializers.IntegerField(source='creator.id', read_only=True)
     destination = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = Trip
@@ -136,12 +137,29 @@ class TripListSerializer(serializers.ModelSerializer):
     
     def get_destination(self, obj):
         return obj.display_destination or obj.destination
+    
+    def get_status(self, obj):
+        """Calculate status based on trip dates"""
+        from datetime import date
+        today = date.today()
+        
+        # If end date has passed, mark as completed
+        if obj.end_date < today:
+            return 'completed'
+        
+        # If start date is in the future, mark as upcoming
+        if obj.start_date > today:
+            return 'upcoming'
+        
+        # If currently on the trip (between start and end dates)
+        return 'planned'
 
 
 class TripDetailSerializer(serializers.ModelSerializer):
     members = TripMemberNestedSerializer(many=True)
     creator_id = serializers.IntegerField(source='creator.id', read_only=True)
     destination = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = Trip
@@ -153,6 +171,22 @@ class TripDetailSerializer(serializers.ModelSerializer):
     
     def get_destination(self, obj):
         return obj.display_destination or obj.destination
+    
+    def get_status(self, obj):
+        """Calculate status based on trip dates"""
+        from datetime import date
+        today = date.today()
+        
+        # If end date has passed, mark as completed
+        if obj.end_date < today:
+            return 'completed'
+        
+        # If start date is in the future, mark as upcoming
+        if obj.start_date > today:
+            return 'upcoming'
+        
+        # If currently on the trip (between start and end dates)
+        return 'planned'
 
 
 class TripInvitationSerializer(serializers.Serializer):

@@ -160,13 +160,15 @@ class TripDetailSerializer(serializers.ModelSerializer):
     creator_id = serializers.IntegerField(source='creator.id', read_only=True)
     destination = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
+    weather = serializers.SerializerMethodField()
 
     class Meta:
         model = Trip
         fields = (
             'id', 'title', 'destination', 'city', 'region', 'country',
             'latitude', 'longitude', 'start_date', 'end_date', 
-            'status', 'created_at', 'members', 'cover_image', 'creator_id'
+            'status', 'created_at', 'members', 'cover_image', 'creator_id',
+            'weather'
         )
     
     def get_destination(self, obj):
@@ -187,6 +189,25 @@ class TripDetailSerializer(serializers.ModelSerializer):
         
         # If currently on the trip (between start and end dates)
         return 'planned'
+    
+    def get_weather(self, obj):
+        """Get weather data for the trip destination."""
+        try:
+            from apps.trips.services.weather_service import weather_service
+            weather_data = weather_service.get_weather_for_trip(obj)
+            if weather_data:
+                return {
+                    'temperature': weather_data.get('temperature'),
+                    'condition': weather_data.get('condition'),
+                    'description': weather_data.get('description'),
+                    'icon': weather_data.get('icon'),
+                    'icon_url': weather_service.get_icon_url(weather_data.get('icon', '01d')),
+                    'city_name': weather_data.get('city_name', obj.city or ''),
+                }
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to get weather for trip {obj.id}: {e}")
+        return None
 
 
 class TripInvitationSerializer(serializers.Serializer):

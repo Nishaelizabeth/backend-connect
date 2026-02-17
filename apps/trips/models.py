@@ -83,3 +83,47 @@ class TripMember(models.Model):
 
     def __str__(self):
         return f"{self.user} in {self.trip} ({self.status})"
+
+
+class TripWeatherCache(models.Model):
+    """
+    Cached weather data for trips.
+    Prevents excessive API calls by caching weather for configurable duration.
+    """
+    trip = models.OneToOneField(
+        Trip,
+        on_delete=models.CASCADE,
+        related_name='weather_cache'
+    )
+    temperature = models.IntegerField(
+        help_text='Temperature in Celsius'
+    )
+    condition = models.CharField(
+        max_length=50,
+        help_text='Weather condition (e.g., Clear, Clouds, Rain)'
+    )
+    description = models.CharField(
+        max_length=100,
+        help_text='Detailed weather description'
+    )
+    icon = models.CharField(
+        max_length=10,
+        help_text='OpenWeather icon code'
+    )
+    city_name = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text='City name from weather API'
+    )
+    last_updated = models.DateTimeField(
+        auto_now=True,
+        help_text='When the cache was last updated'
+    )
+
+    class Meta:
+        verbose_name = 'Trip Weather Cache'
+        verbose_name_plural = 'Trip Weather Caches'
+
+    def __str__(self):
+        return f"Weather for {self.trip.title}: {self.temperature}°C, {self.condition}"

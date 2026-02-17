@@ -28,6 +28,8 @@ urlpatterns = [
     path('api/trips/', include('apps.trips.urls', namespace='trips')),
     path('api/trips/', include('apps.recommendations.urls', namespace='recommendations')),
     path('api/trips/', include('apps.chat.urls', namespace='chat')),
+    path('api/assistant/', include('apps.assistant.urls', namespace='assistant')),
+    path('api/store/', include('apps.store.urls', namespace='store')),
 ]
 
 # Serve static files in development (needed for Daphne/ASGI)

@@ -59,6 +59,8 @@ INSTALLED_APPS = [
     'apps.trips.apps.TripsConfig',
     'apps.recommendations.apps.RecommendationsConfig',
     'apps.chat.apps.ChatConfig',
+    'apps.assistant.apps.AssistantConfig',
+    'apps.store.apps.StoreConfig',
 ]
 
 MIDDLEWARE = [
@@ -255,3 +257,18 @@ OPENTRIPMAP_API_KEY = os.getenv(
 # =============================================================================
 
 UNSPLASH_ACCESS_KEY = os.getenv('UNSPLASH_ACCESS_KEY', '')
+
+# =============================================================================
+# OLLAMA AI SETTINGS
+# =============================================================================
+
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'llama3')
+OLLAMA_TIMEOUT = int(os.getenv('OLLAMA_TIMEOUT', '120'))  # seconds
+
+# =============================================================================
+# OPENWEATHER API SETTINGS
+# =============================================================================
+
+OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY', '')
+OPENWEATHER_CACHE_MINUTES = int(os.getenv('OPENWEATHER_CACHE_MINUTES', '30'))

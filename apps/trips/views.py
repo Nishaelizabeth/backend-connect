@@ -320,3 +320,210 @@ class InvitationsListAPIView(APIView):
             'count': invitations.count(),
             'results': serializer.data
         })
+
+
+# =============================================================================
+# ITINERARY VIEWS
+# =============================================================================
+
+class TripItineraryListCreateView(APIView):
+    """
+    GET /api/trips/{trip_id}/itinerary/ - List all itinerary items
+    POST /api/trips/{trip_id}/itinerary/ - Add destination to itinerary
+    """
+    permission_classes = (IsAuthenticated,)
+
+    def _check_trip_access(self, trip, user):
+        """Check if user has access to the trip."""
+        is_creator = trip.creator == user
+        is_member = TripMember.objects.filter(
+            trip=trip, user=user, status=TripMember.MembershipStatus.ACCEPTED
+        ).exists()
+        return is_creator or is_member
+
+    def get(self, request, trip_id):
+        trip = get_object_or_404(Trip, pk=trip_id)
+        
+        if not self._check_trip_access(trip, request.user):
+            return Response(
+                {'detail': 'You do not have access to this trip.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from apps.recommendations.models import TripSavedDestination
+        from .serializers import ItineraryItemSerializer
+        
+        items = TripSavedDestination.objects.filter(
+            trip=trip
+        ).select_related('destination', 'saved_by').order_by('order', '-saved_at')
+        
+        serializer = ItineraryItemSerializer(items, many=True)
+        return Response({
+            'count': items.count(),
+            'items': serializer.data
+        })
+
+    def post(self, request, trip_id):
+        trip = get_object_or_404(Trip, pk=trip_id)
+        
+        if not self._check_trip_access(trip, request.user):
+            return Response(
+                {'detail': 'You do not have access to this trip.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from apps.recommendations.models import Destination, TripSavedDestination
+        from .serializers import AddToItinerarySerializer, ItineraryItemSerializer
+        
+        serializer = AddToItinerarySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        destination_id = serializer.validated_data['destination_id']
+        notes = serializer.validated_data.get('notes', '')
+        
+        try:
+            destination = Destination.objects.get(id=destination_id, is_active=True)
+        except Destination.DoesNotExist:
+            return Response(
+                {'detail': 'Destination not found or inactive.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if already in itinerary
+        if TripSavedDestination.objects.filter(trip=trip, destination=destination).exists():
+            return Response(
+                {'detail': 'Destination already in itinerary.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get next position
+        max_order = TripSavedDestination.objects.filter(trip=trip).order_by('-order').values_list('order', flat=True).first()
+        next_order = (max_order or 0) + 1
+        
+        item = TripSavedDestination.objects.create(
+            trip=trip,
+            destination=destination,
+            saved_by=request.user,
+            notes=notes,
+            order=next_order
+        )
+        
+        response_serializer = ItineraryItemSerializer(item)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class TripItineraryDetailView(APIView):
+    """
+    DELETE /api/trips/{trip_id}/itinerary/{item_id}/ - Remove from itinerary
+    PATCH /api/trips/{trip_id}/itinerary/{item_id}/ - Update notes
+    """
+    permission_classes = (IsAuthenticated,)
+
+    def _check_trip_access(self, trip, user):
+        is_creator = trip.creator == user
+        is_member = TripMember.objects.filter(
+            trip=trip, user=user, status=TripMember.MembershipStatus.ACCEPTED
+        ).exists()
+        return is_creator or is_member
+
+    def delete(self, request, trip_id, item_id):
+        trip = get_object_or_404(Trip, pk=trip_id)
+        
+        if not self._check_trip_access(trip, request.user):
+            return Response(
+                {'detail': 'You do not have access to this trip.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from apps.recommendations.models import TripSavedDestination
+        
+        try:
+            item = TripSavedDestination.objects.get(id=item_id, trip=trip)
+        except TripSavedDestination.DoesNotExist:
+            return Response(
+                {'detail': 'Itinerary item not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def patch(self, request, trip_id, item_id):
+        trip = get_object_or_404(Trip, pk=trip_id)
+        
+        if not self._check_trip_access(trip, request.user):
+            return Response(
+                {'detail': 'You do not have access to this trip.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from apps.recommendations.models import TripSavedDestination
+        from .serializers import UpdateItineraryNotesSerializer, ItineraryItemSerializer
+        
+        try:
+            item = TripSavedDestination.objects.select_related(
+                'destination', 'saved_by'
+            ).get(id=item_id, trip=trip)
+        except TripSavedDestination.DoesNotExist:
+            return Response(
+                {'detail': 'Itinerary item not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = UpdateItineraryNotesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        item.notes = serializer.validated_data['notes']
+        item.save(update_fields=['notes'])
+        
+        response_serializer = ItineraryItemSerializer(item)
+        return Response(response_serializer.data)
+
+
+class TripItineraryReorderView(APIView):
+    """
+    PATCH /api/trips/{trip_id}/itinerary/reorder/ - Reorder itinerary items
+    """
+    permission_classes = (IsAuthenticated,)
+
+    def _check_trip_access(self, trip, user):
+        is_creator = trip.creator == user
+        is_member = TripMember.objects.filter(
+            trip=trip, user=user, status=TripMember.MembershipStatus.ACCEPTED
+        ).exists()
+        return is_creator or is_member
+
+    def patch(self, request, trip_id):
+        trip = get_object_or_404(Trip, pk=trip_id)
+        
+        if not self._check_trip_access(trip, request.user):
+            return Response(
+                {'detail': 'You do not have access to this trip.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from apps.recommendations.models import TripSavedDestination
+        from .serializers import ReorderItinerarySerializer, ItineraryItemSerializer
+        
+        serializer = ReorderItinerarySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        items_data = serializer.validated_data['items']
+        
+        # Update positions in bulk
+        for item_data in items_data:
+            TripSavedDestination.objects.filter(
+                id=item_data['id'],
+                trip=trip
+            ).update(order=item_data['position'])
+        
+        # Return updated list
+        items = TripSavedDestination.objects.filter(
+            trip=trip
+        ).select_related('destination', 'saved_by').order_by('order', '-saved_at')
+        
+        response_serializer = ItineraryItemSerializer(items, many=True)
+        return Response({
+            'count': items.count(),
+            'items': response_serializer.data
+        })

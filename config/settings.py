@@ -247,7 +247,7 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
 
 OPENTRIPMAP_API_KEY = os.getenv(
     'OPENTRIPMAP_API_KEY', 
-    '5ae2e3f221c38a28845f05b6e59e584ccfd26855d205a83c5d74da4c'
+    '5ae2e3f221c38a28845f05b66f141b6827282757c79816d113f6f584'
 )
 
 # =============================================================================

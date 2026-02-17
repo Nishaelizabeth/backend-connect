@@ -14,5 +14,10 @@ urlpatterns = [
     path('<int:pk>/reject/', views.RejectTripAPIView.as_view(), name='trip-reject'),
     path('<int:pk>/leave/', views.LeaveTripAPIView.as_view(), name='trip-leave'),
     path('dashboard/stats/', views.DashboardStatsView.as_view(), name='dashboard-stats'),
+    
+    # Itinerary endpoints
+    path('<int:trip_id>/itinerary/', views.TripItineraryListCreateView.as_view(), name='trip-itinerary-list-create'),
+    path('<int:trip_id>/itinerary/<int:item_id>/', views.TripItineraryDetailView.as_view(), name='trip-itinerary-detail'),
+    path('<int:trip_id>/itinerary/reorder/', views.TripItineraryReorderView.as_view(), name='trip-itinerary-reorder'),
 ]
 

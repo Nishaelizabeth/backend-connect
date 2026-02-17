@@ -206,3 +206,57 @@ class TripInvitationSerializer(serializers.Serializer):
     
     def get_destination(self, obj):
         return obj.trip.display_destination or obj.trip.destination
+
+
+# =============================================================================
+# ITINERARY SERIALIZERS
+# =============================================================================
+
+class ItineraryDestinationSerializer(serializers.Serializer):
+    """Nested destination info for itinerary items."""
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    city = serializers.CharField()
+    country = serializers.CharField()
+    category = serializers.CharField()
+    image_url = serializers.URLField(allow_null=True)
+    lat = serializers.FloatField(allow_null=True)
+    lon = serializers.FloatField(allow_null=True)
+
+
+class ItineraryItemSerializer(serializers.Serializer):
+    """Serializer for itinerary items."""
+    id = serializers.IntegerField()
+    destination = ItineraryDestinationSerializer()
+    added_by_id = serializers.IntegerField(source='saved_by.id')
+    added_by_name = serializers.CharField(source='saved_by.full_name')
+    notes = serializers.CharField(allow_blank=True)
+    position = serializers.IntegerField(source='order', allow_null=True)
+    saved_at = serializers.DateTimeField()
+
+
+class AddToItinerarySerializer(serializers.Serializer):
+    """Serializer for adding a destination to itinerary."""
+    destination_id = serializers.IntegerField()
+    notes = serializers.CharField(allow_blank=True, required=False, default='')
+
+
+class ReorderItinerarySerializer(serializers.Serializer):
+    """Serializer for reordering itinerary items."""
+    items = serializers.ListField(
+        child=serializers.DictField(child=serializers.IntegerField()),
+        help_text='List of {id, position} objects'
+    )
+    
+    def validate_items(self, value):
+        for item in value:
+            if 'id' not in item or 'position' not in item:
+                raise serializers.ValidationError(
+                    'Each item must have "id" and "position" fields'
+                )
+        return value
+
+
+class UpdateItineraryNotesSerializer(serializers.Serializer):
+    """Serializer for updating itinerary item notes."""
+    notes = serializers.CharField(allow_blank=True)

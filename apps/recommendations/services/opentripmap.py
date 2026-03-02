@@ -15,7 +15,7 @@ from datetime import timedelta
 logger = logging.getLogger(__name__)
 
 OPENTRIPMAP_BASE_URL = "https://api.opentripmap.com/0.1/en/places"
-REQUEST_TIMEOUT = 10
+REQUEST_TIMEOUT = 3  # Reduced from 10s to fail fast
 DETAILS_CACHE_TIMEOUT = 600  # 10 minutes
 
 
@@ -53,6 +53,7 @@ class OpenTripMapService:
         """
         if not self.api_key:
             logger.error("OPENTRIPMAP_API_KEY not configured")
+            print("[DEBUG] OPENTRIPMAP_API_KEY not configured!")
             return []
         
         params = {
@@ -69,18 +70,26 @@ class OpenTripMapService:
         
         try:
             url = f"{self.base_url}/radius"
+            print(f"[DEBUG] OpenTripMap API call: {url}, lat={lat}, lon={lon}, radius={radius}, kinds={kinds}")
             logger.info(f"OpenTripMap request: {url} with params lat={lat}, lon={lon}, radius={radius}")
             response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            print(f"[DEBUG] OpenTripMap status code: {response.status_code}")
             response.raise_for_status()
             result = response.json()
             
+            print(f"[DEBUG] OpenTripMap raw response type: {type(result)}, length: {len(result) if isinstance(result, (list, dict)) else 'N/A'}")
             logger.info(f"OpenTripMap response type: {type(result)}, content: {str(result)[:200]}")
             
             if isinstance(result, list):
+                # Include places without names but with xid - can still be useful
                 places = [
                     place for place in result
-                    if place.get('name') and place.get('xid')
+                    if place.get('xid')  # Only require xid, not name
                 ]
+                print(f"[DEBUG] Total places from API: {len(result)}, After filter (xid required): {len(places)}")
+                # Log first few if available
+                if result and len(result) > 0:
+                    print(f"[DEBUG] First raw place example: {result[0]}")
                 logger.info(f"Found {len(places)} places near ({lat}, {lon})")
                 return places
             elif isinstance(result, dict):
@@ -94,12 +103,15 @@ class OpenTripMapService:
             
         except requests.exceptions.Timeout:
             logger.error(f"OpenTripMap timeout for radius search at ({lat}, {lon})")
+            print(f"[DEBUG] OpenTripMap TIMEOUT at ({lat}, {lon})")
             return []
         except requests.exceptions.RequestException as e:
             logger.error(f"OpenTripMap request error: {str(e)}")
+            print(f"[DEBUG] OpenTripMap REQUEST ERROR: {str(e)}")
             return []
         except ValueError as e:
             logger.error(f"OpenTripMap JSON parse error: {str(e)}")
+            print(f"[DEBUG] OpenTripMap JSON PARSE ERROR: {str(e)}")
             return []
     
     def get_place_details(self, xid: str) -> Dict[str, Any]:
@@ -113,6 +125,7 @@ class OpenTripMapService:
             Dictionary with detailed place information (empty dict on error)
         """
         if not self.api_key:
+            print(f"[DEBUG] get_place_details: OPENTRIPMAP_API_KEY not configured!")
             logger.error("OPENTRIPMAP_API_KEY not configured")
             return {}
         
@@ -120,6 +133,7 @@ class OpenTripMapService:
         cache_key = f"opentripmap_details_{xid}"
         cached_result = cache.get(cache_key)
         if cached_result is not None:
+            print(f"[DEBUG] get_place_details: Cache HIT for {xid}")
             logger.debug(f"Cache hit for place details: {xid}")
             return cached_result
         
@@ -127,28 +141,35 @@ class OpenTripMapService:
             url = f"{self.base_url}/xid/{xid}"
             params = {'apikey': self.api_key}
             
+            print(f"[DEBUG] get_place_details: Fetching {xid}...")
             response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            print(f"[DEBUG] get_place_details: Status {response.status_code} for {xid}")
             response.raise_for_status()
             result = response.json()
             
             if result and result.get('xid'):
                 # Cache the successful result
                 cache.set(cache_key, result, DETAILS_CACHE_TIMEOUT)
+                print(f"[DEBUG] get_place_details: Got name='{result.get('name', '')}' for {xid}")
                 return result
             
+            print(f"[DEBUG] get_place_details: Empty/invalid result for {xid}")
             # Cache empty result to avoid repeated failures
             cache.set(cache_key, {}, DETAILS_CACHE_TIMEOUT)
             return {}
             
         except requests.exceptions.Timeout:
+            print(f"[DEBUG] get_place_details: TIMEOUT for {xid}")
             logger.warning(f"OpenTripMap timeout for place details: {xid}")
             cache.set(cache_key, {}, 60)  # Cache failure for 1 minute
             return {}
         except requests.exceptions.RequestException as e:
+            print(f"[DEBUG] get_place_details: REQUEST ERROR for {xid}: {str(e)}")
             logger.warning(f"OpenTripMap request error for {xid}: {str(e)}")
             cache.set(cache_key, {}, 60)
             return {}
         except ValueError as e:
+            print(f"[DEBUG] get_place_details: JSON ERROR for {xid}: {str(e)}")
             logger.warning(f"OpenTripMap JSON parse error for {xid}: {str(e)}")
             cache.set(cache_key, {}, 60)
             return {}
@@ -164,11 +185,16 @@ class OpenTripMapService:
         Returns:
             List of enriched place dictionaries
         """
+        print(f"[DEBUG] get_places_with_details: Enriching {len(places)} places (max_details={max_details})")
         enriched_places = []
         
         for i, place in enumerate(places):
+            xid = place.get('xid', '')
+            original_name = place.get('name', '')
+            
             if i >= max_details:
                 # For remaining places, just add empty image/description
+                print(f"[DEBUG] Place {i} ({xid}): Skipping details (over max_details)")
                 enriched_places.append({
                     **place,
                     'image': None,
@@ -176,9 +202,9 @@ class OpenTripMapService:
                 })
                 continue
             
-            xid = place.get('xid')
             if not xid or xid.startswith('osm_'):
                 # OSM results don't have detail endpoints
+                print(f"[DEBUG] Place {i} ({xid}): Skipping (OSM or no xid)")
                 enriched_places.append({
                     **place,
                     'image': None,
@@ -187,34 +213,52 @@ class OpenTripMapService:
                 continue
             
             # Fetch details for this place
+            print(f"[DEBUG] Place {i} ({xid}): Fetching details...")
             logger.info(f"Fetching details for xid: {xid}")
             details = self.get_place_details(xid)
             
-            # Extract image and description
+            # Extract image, description, and name from details
             image = None
             description = ''
+            name = original_name  # Start with original name
             
             if details:
+                print(f"[DEBUG] Place {i} ({xid}): Got details, keys={list(details.keys())}")
+                
+                # Extract name from details if original is empty
+                if not name and details.get('name'):
+                    name = details['name']
+                    print(f"[DEBUG] Place {i} ({xid}): Got name from details: {name}")
+                
                 # Extract image
                 if details.get('preview') and details['preview'].get('source'):
                     image = details['preview']['source']
-                    logger.info(f"Found image for {place.get('name')}: {image}")
+                    print(f"[DEBUG] Place {i} ({xid}): Found image: {image[:50]}...")
+                elif details.get('image'):
+                    image = details['image']
+                    print(f"[DEBUG] Place {i} ({xid}): Found direct image: {image[:50]}...")
                 else:
-                    logger.warning(f"No image found in details for {place.get('name')}")
+                    print(f"[DEBUG] Place {i} ({xid}): No image in details")
                 
                 # Extract description
                 if details.get('wikipedia_extracts') and details['wikipedia_extracts'].get('text'):
                     description = details['wikipedia_extracts']['text']
+                    print(f"[DEBUG] Place {i} ({xid}): Got description ({len(description)} chars)")
             else:
+                print(f"[DEBUG] Place {i} ({xid}): No details returned!")
                 logger.warning(f"No details returned for xid: {xid}")
             
             enriched_places.append({
                 **place,
+                'name': name,  # Use extracted or original name
                 'image': image,
                 'description': description,
                 'details': details,  # Keep full details for downstream processing
             })
         
+        # Filter out places without names
+        places_with_names = [p for p in enriched_places if p.get('name')]
+        print(f"[DEBUG] Enrichment complete: {len(enriched_places)} total, {len(places_with_names)} with names")
         logger.info(f"Enriched {min(len(places), max_details)} places with details")
         return enriched_places
     

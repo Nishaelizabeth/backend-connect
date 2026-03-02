@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Destination, TripSavedDestination, DestinationImageCache
+from .models import Destination, TripSavedDestination, DestinationImageCache, TripRecommendationCache
 
 
 @admin.register(Destination)
@@ -26,3 +26,18 @@ class DestinationImageCacheAdmin(admin.ModelAdmin):
     search_fields = ['query']
     ordering = ['-created_at']
     readonly_fields = ['created_at']
+
+
+@admin.register(TripRecommendationCache)
+class TripRecommendationCacheAdmin(admin.ModelAdmin):
+    list_display = ['trip', 'status', 'last_generated', 'expires_at', 'is_expired']
+    list_filter = ['status', 'last_generated', 'expires_at']
+    search_fields = ['trip__title', 'trip__city']
+    ordering = ['-last_generated']
+    readonly_fields = ['created_at', 'last_generated']
+    
+    def is_expired(self, obj):
+        """Display if cache is expired."""
+        return obj.is_expired()
+    is_expired.boolean = True
+    is_expired.short_description = 'Expired'

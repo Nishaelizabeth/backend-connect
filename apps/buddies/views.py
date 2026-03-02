@@ -236,6 +236,7 @@ class AcceptedBuddiesListView(views.APIView):
     GET /api/buddies/accepted/
     
     Returns a list of accepted buddies (confirmed connections) for the user.
+    This endpoint shows all connected buddies without pagination for trip creation.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -243,10 +244,13 @@ class AcceptedBuddiesListView(views.APIView):
         from .models import BuddyMatch
         
         # Get all connected matches for the user (excluding disconnected)
+        # Order by match score descending to show best matches first
         matches = BuddyMatch.objects.filter(
             user=request.user,
             status=BuddyMatch.Status.CONNECTED
-        ).select_related('matched_user', 'matched_user__preferences')
+        ).select_related('matched_user', 'matched_user__preferences'
+        ).prefetch_related('matched_user__preferences__interests'
+        ).order_by('-match_score', 'matched_user__full_name')
         
         buddies = []
         for match in matches:
@@ -262,7 +266,7 @@ class AcceptedBuddiesListView(views.APIView):
             
             buddies.append({
                 'id': match.matched_user.id,
-                'full_name': match.matched_user.full_name,
+                'full_name': match.matched_user.full_name or match.matched_user.email.split('@')[0],
                 'email': match.matched_user.email,
                 'avatar_url': None,  # Add avatar support when available
                 'primary_interest': primary_interest,

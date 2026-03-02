@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 from django.db.models import Q
 
 from apps.buddies.models import BuddyMatch, BuddyRequest
+from apps.buddies.services import BuddyMatchingService
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,8 @@ def get_ranked_buddy_matches(
     """
     Get ranked buddy matches for a user with pagination.
     
+    Suggests NEW potential buddies (not already connected) based on compatibility scores.
+    
     Args:
         user: The authenticated user
         offset: Starting position for pagination
@@ -115,36 +118,39 @@ def get_ranked_buddy_matches(
     Returns:
         Tuple of (list of buddy match dicts, has_more flag)
     """
-    # Get all matches sorted by score, excluding already connected users
-    matches = BuddyMatch.objects.filter(
-        user=user
-    ).exclude(
-        status=BuddyMatch.Status.DISCONNECTED
-    ).order_by('-match_score').select_related('matched_user', 'matched_user__preferences')
+    # Get all connected users to exclude them from suggestions
+    connected_user_ids = BuddyMatch.objects.filter(
+        user=user,
+        status=BuddyMatch.Status.CONNECTED
+    ).values_list('matched_user_id', flat=True)
     
-    # Get total count
-    total_count = matches.count()
+    # Calculate compatibility scores for all users with preferences
+    # Get more than needed for filtering
+    service = BuddyMatchingService(user)
+    all_matches = service.get_matches(limit=100, min_score=0.0)
+    
+    # Filter out already connected users
+    unconnected_matches = [
+        match for match in all_matches
+        if match['user'].id not in connected_user_ids
+    ]
+    
+    # Get total count after filtering
+    total_count = len(unconnected_matches)
     
     # Apply pagination
-    paginated = matches[offset:offset + limit]
+    paginated_matches = unconnected_matches[offset:offset + limit]
     
     # Check if there are more results
     has_more = (offset + limit) < total_count
     
     # Build response list
     buddy_list = []
-    for match in paginated:
-        matched_user = match.matched_user
+    for match in paginated_matches:
+        matched_user = match['user']
         
-        # Get user interests
-        interests = []
-        try:
-            if hasattr(matched_user, 'preferences'):
-                interests = list(
-                    matched_user.preferences.interests.values_list('name', flat=True)[:5]
-                )
-        except Exception:
-            pass
+        # Get user interests (use shared_interests from BuddyMatchingService)
+        interests = match['shared_interests'][:5]
         
         # Get request status
         request_status = get_buddy_request_status(user, matched_user)
@@ -154,7 +160,7 @@ def get_ranked_buddy_matches(
             'name': matched_user.full_name or matched_user.email.split('@')[0],
             'email': matched_user.email,
             'avatar': None,  # No avatar in current User model
-            'match_score': round(match.match_score, 1),
+            'match_score': match['match_score'],
             'tags': interests,
             'request_status': request_status,
         })

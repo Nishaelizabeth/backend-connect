@@ -257,6 +257,10 @@ OPENTRIPMAP_API_KEY = os.getenv(
 # =============================================================================
 
 UNSPLASH_ACCESS_KEY = os.getenv('UNSPLASH_ACCESS_KEY', '')
+if UNSPLASH_ACCESS_KEY:
+    print(f"[SETTINGS] UNSPLASH_ACCESS_KEY loaded: {UNSPLASH_ACCESS_KEY[:8]}...")
+else:
+    print("[SETTINGS] WARNING: UNSPLASH_ACCESS_KEY not found in environment!")
 
 # =============================================================================
 # OLLAMA AI SETTINGS

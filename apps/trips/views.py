@@ -51,15 +51,27 @@ class TripListCreateAPIView(APIView):
         return Response(serializer.data)
 
     def post(self, request):
+        print(f"[DEBUG] Trip creation request data: {request.data}")
         serializer = TripCreateSerializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            print(f"[DEBUG] Trip validation errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         trip = serializer.save()
         
         # Attempt geocoding if coordinates not provided
         geocode_trip_location(trip)
         
         out = TripDetailSerializer(trip)
-        return Response(out.data, status=status.HTTP_201_CREATED)
+        response_data = out.data
+        
+        # Include warnings if any users have date conflicts
+        if hasattr(trip, '_date_conflict_warnings') and trip._date_conflict_warnings:
+            response_data['warnings'] = {
+                'message': 'Some invited users have date conflicts with existing trips',
+                'conflicts': trip._date_conflict_warnings
+            }
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 class TripDetailAPIView(APIView):
@@ -176,6 +188,18 @@ class InviteToTripAPIView(APIView):
         if not connected:
             return Response({'detail': 'You can only invite connected buddies.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Check if the user being invited has date conflicts
+        from .utils import check_date_overlap
+        overlap_result = check_date_overlap(user_to_invite, trip.start_date, trip.end_date)
+        if overlap_result['has_overlap']:
+            # Return warning but don't block the invitation
+            # The user can still be invited but will see the conflict when accepting
+            conflicting_trip = overlap_result['overlapping_trips'][0]
+            return Response({
+                'detail': f"Warning: {user_to_invite.full_name or user_to_invite.email} already has a trip '{conflicting_trip['title']}' from {conflicting_trip['start_date']} to {conflicting_trip['end_date']} that overlaps with this trip's dates.",
+                'warning': True
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         # Create trip member with invited status
         TripMember.objects.create(
             trip=trip,
@@ -212,6 +236,13 @@ class AcceptTripAPIView(APIView):
 
         if membership.status != TripMember.MembershipStatus.INVITED:
             return Response({'detail': 'Invitation cannot be accepted.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check for date overlaps before accepting
+        from .utils import check_date_overlap, format_date_overlap_error
+        overlap_result = check_date_overlap(request.user, trip.start_date, trip.end_date)
+        if overlap_result['has_overlap']:
+            error_msg = format_date_overlap_error(overlap_result['overlapping_trips'])
+            return Response({'detail': error_msg}, status=status.HTTP_400_BAD_REQUEST)
 
         membership.status = TripMember.MembershipStatus.ACCEPTED
         membership.joined_at = timezone.now()
@@ -311,7 +342,16 @@ class InvitationsListAPIView(APIView):
 
     def get(self, request):
         user = request.user
-        invitations = TripMember.objects.filter(user=user, status=TripMember.MembershipStatus.INVITED).select_related('trip__creator', 'user', 'trip')
+        invitations = TripMember.objects.filter(
+            user=user, 
+            status=TripMember.MembershipStatus.INVITED
+        ).select_related(
+            'trip__creator', 
+            'user', 
+            'trip'
+        ).prefetch_related(
+            'trip__members__user'
+        )
 
         from .serializers import TripInvitationSerializer
 

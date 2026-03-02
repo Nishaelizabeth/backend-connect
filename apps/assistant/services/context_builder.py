@@ -11,23 +11,36 @@ from django.db.models import Q
 
 logger = logging.getLogger(__name__)
 
-# System prompt template
+# System prompt template with anti-hallucination rules
 SYSTEM_PROMPT = """You are Travel Buddy AI, an intelligent and friendly travel assistant.
+
+CRITICAL ANTI-HALLUCINATION RULES:
+
+1. **NEVER fabricate or invent trips, buddies, orders, destinations, or products.**
+2. **ONLY use information explicitly provided in the USER CONTEXT section below.**
+3. **If information is missing from the context, you MUST say:**
+   "I don't see that information in your travel data yet."
+4. **For questions about user's internal platform data (trips, buddies, orders):**
+   - If the context is empty or missing → Politely refuse instead of guessing
+   - NEVER make up trip names, buddy names, or product details
+5. **You MAY use general travel knowledge ONLY when the question is NOT about the user's specific data.**
 
 Your capabilities:
 - Help users plan trips and create itineraries
 - Suggest travel buddies based on compatibility
 - Recommend destinations based on preferences
-- Provide travel advice and tips
+- Provide travel advice and tips (general knowledge)
 - Optimize travel plans and itineraries
 
 Guidelines:
 - Be concise but helpful
-- Use the provided user context when relevant
-- Give personalized suggestions when user data is available
+- Use ONLY the provided user context when answering questions about user data
+- Give personalized suggestions only when actual user data is available
 - Be encouraging and positive about travel adventures
-- If you don't have specific information, provide general travel advice
-- Format responses nicely with bullet points when listing things"""
+- If you don't have specific information about user data, acknowledge it honestly
+- For general travel questions (packing, destinations, tips), you may use general knowledge
+- Format responses nicely with bullet points when listing things
+- Never invent names, dates, or details that aren't in the USER CONTEXT"""
 
 
 def build_user_context(user) -> str:
@@ -144,6 +157,68 @@ def build_user_context(user) -> str:
     except Exception as e:
         logger.warning(f"Failed to fetch buddies: {e}")
     
+    # Store Orders
+    try:
+        from apps.store.models import Order
+        
+        orders = Order.objects.filter(
+            user=user
+        ).prefetch_related('items__product').order_by('-created_at')[:5]
+        
+        if orders:
+            order_info = []
+            for order in orders:
+                items_count = order.items.count()
+                order_str = f"Order #{order.id} - ${order.total_amount} ({items_count} items, {order.status})"
+                # Add product names
+                products = [item.product.name for item in order.items.all()[:3]]
+                if products:
+                    order_str += f" - {', '.join(products)}"
+                    if items_count > 3:
+                        order_str += "..."
+                order_info.append(order_str)
+            
+            context_parts.append("Recent Orders:\n- " + "\n- ".join(order_info))
+    except Exception as e:
+        logger.warning(f"Failed to fetch orders: {e}")
+    
+    # Shopping Cart
+    try:
+        from apps.store.models import Cart
+        
+        cart = Cart.objects.filter(user=user).prefetch_related('items__product').first()
+        
+        if cart and cart.items.exists():
+            cart_items = cart.items.all()
+            cart_info = []
+            for item in cart_items[:5]:
+                cart_info.append(f"{item.product.name} (x{item.quantity}) - ${item.product.price}")
+            
+            total = sum(item.quantity * item.product.price for item in cart_items)
+            context_parts.append(
+                f"Shopping Cart ({cart_items.count()} items, Total: ${total:.2f}):\n- " + 
+                "\n- ".join(cart_info)
+            )
+    except Exception as e:
+        logger.warning(f"Failed to fetch cart: {e}")
+    
+    # Wishlist
+    try:
+        from apps.store.models import Wishlist
+        
+        wishlist_items = Wishlist.objects.filter(
+            user=user
+        ).select_related('product')[:5]
+        
+        if wishlist_items:
+            wishlist_info = []
+            for item in wishlist_items:
+                wishlist_info.append(f"{item.product.name} - ${item.product.price}")
+            
+            context_parts.append("Wishlist:\n- " + "\n- ".join(wishlist_info))
+    except Exception as e:
+        logger.warning(f"Failed to fetch wishlist: {e}")
+    
     # Weather information for upcoming/active trips
     try:
         from datetime import date
@@ -180,6 +255,113 @@ def build_user_context(user) -> str:
     return "USER CONTEXT: No additional information available."
 
 
+def collect_structured_context(user) -> dict:
+    """
+    Collect structured user context data for validation purposes.
+    
+    Returns a dictionary with actual database objects/querysets
+    that can be used for hallucination detection.
+    
+    Args:
+        user: The authenticated user object
+        
+    Returns:
+        Dictionary with structured context data
+    """
+    context = {
+        'preferences': None,
+        'trips': [],
+        'buddies': [],
+        'saved_destinations': [],
+        'orders': [],
+        'cart_items': [],
+        'wishlist': []
+    }
+    
+    # Preferences
+    try:
+        if hasattr(user, 'preferences'):
+            context['preferences'] = user.preferences
+    except Exception as e:
+        logger.warning(f"Failed to collect preferences: {e}")
+    
+    # Trips
+    try:
+        from apps.trips.models import Trip, TripMember
+        
+        trips = Trip.objects.filter(
+            Q(creator=user) | 
+            Q(members__user=user, members__status=TripMember.MembershipStatus.ACCEPTED)
+        ).distinct().select_related('creator')[:10]
+        
+        context['trips'] = list(trips)
+    except Exception as e:
+        logger.warning(f"Failed to collect trips: {e}")
+    
+    # Buddies
+    try:
+        from apps.buddies.models import BuddyRequest
+        
+        buddy_requests = BuddyRequest.objects.filter(
+            Q(sender=user, status=BuddyRequest.Status.ACCEPTED) |
+            Q(receiver=user, status=BuddyRequest.Status.ACCEPTED)
+        ).select_related('sender', 'receiver')
+        
+        buddies = []
+        for req in buddy_requests:
+            buddy = req.receiver if req.sender == user else req.sender
+            buddies.append(buddy)
+        
+        context['buddies'] = buddies
+    except Exception as e:
+        logger.warning(f"Failed to collect buddies: {e}")
+    
+    # Saved Destinations
+    try:
+        from apps.recommendations.models import TripSavedDestination
+        
+        saved = TripSavedDestination.objects.filter(
+            saved_by=user
+        ).select_related('destination', 'trip')
+        
+        context['saved_destinations'] = list(saved)
+    except Exception as e:
+        logger.warning(f"Failed to collect saved destinations: {e}")
+    
+    # Orders
+    try:
+        from apps.store.models import Order
+        
+        orders = Order.objects.filter(
+            user=user
+        ).prefetch_related('items__product')
+        
+        context['orders'] = list(orders)
+    except Exception as e:
+        logger.warning(f"Failed to collect orders: {e}")
+    
+    # Cart Items
+    try:
+        from apps.store.models import Cart
+        
+        cart = Cart.objects.filter(user=user).prefetch_related('items__product').first()
+        if cart:
+            context['cart_items'] = list(cart.items.all())
+    except Exception as e:
+        logger.warning(f"Failed to collect cart: {e}")
+    
+    # Wishlist
+    try:
+        from apps.store.models import Wishlist
+        
+        wishlist = Wishlist.objects.filter(user=user).select_related('product')
+        context['wishlist'] = list(wishlist)
+    except Exception as e:
+        logger.warning(f"Failed to collect wishlist: {e}")
+    
+    return context
+
+
 def build_conversation_history(conversation, limit: int = 5) -> str:
     """
     Build conversation history string from recent messages.
@@ -214,7 +396,7 @@ def build_full_prompt(
     user,
     user_message: str,
     conversation=None
-) -> tuple[str, str]:
+) -> tuple[str, str, dict]:
     """
     Build the complete prompt for the AI assistant.
     
@@ -224,10 +406,16 @@ def build_full_prompt(
         conversation: Optional existing conversation for history
         
     Returns:
-        Tuple of (system_prompt, user_prompt)
+        Tuple of (system_prompt, user_prompt, structured_context)
+        - system_prompt: System instructions for the LLM
+        - user_prompt: Full prompt including context and message
+        - structured_context: Dictionary with actual database objects for validation
     """
     # Build user context from database
     user_context = build_user_context(user)
+    
+    # Collect structured context for validation
+    structured_context = collect_structured_context(user)
     
     # Build conversation history
     history = build_conversation_history(conversation, limit=5)
@@ -243,4 +431,4 @@ def build_full_prompt(
     
     full_prompt = "\n\n".join(prompt_parts)
     
-    return SYSTEM_PROMPT, full_prompt
+    return SYSTEM_PROMPT, full_prompt, structured_context

@@ -22,8 +22,22 @@ from .services.buddy_suggestions import (
     is_more_buddies_request,
     build_buddy_response,
 )
+from .services.intent_detector import detect_intent, is_context_sufficient
+from .services.hallucination_guard import validate_response
 
 logger = logging.getLogger(__name__)
+
+# Responses for insufficient database context
+NO_DATA_RESPONSES = {
+    'trips': "I don't see any trips in your account yet. Once you create trips, I can help you with planning and recommendations!",
+    'buddies': "You don't have any connected travel buddies yet. Would you like me to help you find compatible travel companions?",
+    'orders': "I don't see any orders in your purchase history yet. Feel free to explore our travel store!",
+    'store': "Your cart and wishlist are currently empty. Browse our travel products and I can help you choose!",
+    'preferences': "I don't have your travel preferences set up yet. You can update your profile to help me give better recommendations!",
+    'destinations': "You haven't saved any destinations yet. Start exploring and save places you'd like to visit!",
+    'account': "I don't see much data in your account yet. As you use Travel Buddy, I'll be able to provide more personalized assistance!",
+    'general': "I don't see that information in your travel data yet."
+}
 
 # Fallback responses when Ollama is unavailable
 FALLBACK_RESPONSES = {
@@ -124,14 +138,46 @@ class AssistantChatView(APIView):
                 'message_id': assistant_msg.id
             }, status=status.HTTP_200_OK)
         
-        # Regular message - use Ollama or fallback
+        # Detect intent - is this a database query or general knowledge?
+        intent_type, intent_category = detect_intent(user_message)
+        logger.info(f"Detected intent: {intent_type} (category: {intent_category})")
+        
         # Build prompt with context
-        system_prompt, full_prompt = build_full_prompt(
+        system_prompt, full_prompt, structured_context = build_full_prompt(
             user=request.user,
             user_message=user_message,
             conversation=conversation
         )
         
+        # ANTI-HALLUCINATION CHECK:
+        # For database queries, check if we have sufficient context
+        if intent_type == 'database_query':
+            if not is_context_sufficient(structured_context, intent_category):
+                # No data available - return direct response without calling LLM
+                refusal_message = NO_DATA_RESPONSES.get(
+                    intent_category,
+                    NO_DATA_RESPONSES['general']
+                )
+                
+                logger.info(f"Insufficient context for {intent_category} query, returning refusal")
+                
+                # Save assistant response
+                assistant_msg = ChatbotMessage.objects.create(
+                    conversation=conversation,
+                    role=ChatbotMessage.Role.ASSISTANT,
+                    content=refusal_message
+                )
+                
+                # Update conversation timestamp
+                conversation.save()
+                
+                return Response({
+                    'reply': refusal_message,
+                    'conversation_id': conversation.id,
+                    'message_id': assistant_msg.id
+                }, status=status.HTTP_200_OK)
+        
+        # Regular message - use Ollama or fallback
         # Generate AI response
         ai_response = None
         if ollama_service.is_available():
@@ -146,12 +192,34 @@ class AssistantChatView(APIView):
             logger.warning("Ollama unavailable, using fallback response")
             ai_response = get_fallback_response(user_message)
         
+        # HALLUCINATION GUARD:
+        # Validate the response for database queries
+        if intent_type == 'database_query' and ai_response:
+            is_valid, override_response = validate_response(
+                response=ai_response,
+                user_context=structured_context,
+                intent_category=intent_category
+            )
+            
+            if not is_valid and override_response:
+                logger.warning(f"Hallucination detected, using override response")
+                ai_response = override_response
+        
         # Save assistant response
         assistant_msg = ChatbotMessage.objects.create(
             conversation=conversation,
             role=ChatbotMessage.Role.ASSISTANT,
             content=ai_response
         )
+        
+        # Update conversation timestamp
+        conversation.save()  # Triggers updated_at
+        
+        return Response({
+            'reply': ai_response,
+            'conversation_id': conversation.id,
+            'message_id': assistant_msg.id
+        }, status=status.HTTP_200_OK)
         
         # Update conversation timestamp
         conversation.save()  # Triggers updated_at

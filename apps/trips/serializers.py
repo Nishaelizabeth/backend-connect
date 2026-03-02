@@ -42,12 +42,24 @@ class TripCreateSerializer(serializers.ModelSerializer):
         if start and end and start >= end:
             raise serializers.ValidationError('start_date must be before end_date')
 
-        # Validate invited users are connected buddies
-        invited = data.get('invited_user_ids', [])
+        # Validate creator doesn't have overlapping trips
         request = self.context.get('request')
         creator = request.user if request else None
+        
+        if creator and start and end:
+            from .utils import check_date_overlap, format_date_overlap_error
+            overlap_result = check_date_overlap(creator, start, end)
+            if overlap_result['has_overlap']:
+                error_msg = format_date_overlap_error(overlap_result['overlapping_trips'])
+                raise serializers.ValidationError({'date_conflict': error_msg})
 
-        if invited and creator:
+        # Validate invited users are connected buddies
+        invited = data.get('invited_user_ids', [])
+
+        if invited and creator and start and end:
+            from .utils import check_date_overlap
+            
+            users_with_conflicts = []
             for uid in set(invited):
                 if uid == getattr(creator, 'id'):
                     raise serializers.ValidationError('Creator cannot be invited')
@@ -58,11 +70,30 @@ class TripCreateSerializer(serializers.ModelSerializer):
                 ).exists()
                 if not connected:
                     raise serializers.ValidationError(f'User {uid} is not a connected buddy')
+                
+                # Check if invited user has date conflicts (warning only)
+                try:
+                    user = User.objects.get(id=uid)
+                    overlap_result = check_date_overlap(user, start, end)
+                    if overlap_result['has_overlap']:
+                        conflicting_trip = overlap_result['overlapping_trips'][0]
+                        users_with_conflicts.append({
+                            'user_id': uid,
+                            'user_name': user.full_name or user.email,
+                            'conflicting_trip': conflicting_trip['title']
+                        })
+                except User.DoesNotExist:
+                    pass
+            
+            # Store warnings in context so they can be accessed after creation
+            if users_with_conflicts:
+                data['_date_conflict_warnings'] = users_with_conflicts
 
         return data
 
     def create(self, validated_data):
         invited = validated_data.pop('invited_user_ids', [])
+        warnings = validated_data.pop('_date_conflict_warnings', [])
         request = self.context.get('request')
         creator = request.user
         
@@ -77,6 +108,9 @@ class TripCreateSerializer(serializers.ModelSerializer):
             validated_data['destination'] = f"{city}, {country}"
 
         trip = Trip.objects.create(creator=creator, **validated_data)
+
+        # Store warnings on trip instance for access in view
+        trip._date_conflict_warnings = warnings
 
         # Creator as accepted member
         TripMember.objects.create(
@@ -224,9 +258,15 @@ class TripInvitationSerializer(serializers.Serializer):
     creator_name = serializers.CharField(source='trip.creator.full_name')
     status = serializers.CharField()
     joined_at = serializers.DateTimeField(allow_null=True)
+    members = serializers.SerializerMethodField()
     
     def get_destination(self, obj):
         return obj.trip.display_destination or obj.trip.destination
+    
+    def get_members(self, obj):
+        """Return all members (accepted and invited) for this trip."""
+        trip_members = obj.trip.members.all()
+        return TripMemberNestedSerializer(trip_members, many=True).data
 
 
 # =============================================================================

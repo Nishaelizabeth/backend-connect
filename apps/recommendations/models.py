@@ -1,5 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from datetime import timedelta
 from apps.trips.models import Trip
 
 User = get_user_model()
@@ -137,3 +139,71 @@ class DestinationImageCache(models.Model):
     
     def __str__(self):
         return f"Cache: {self.query[:50]}"
+
+
+class TripRecommendationCache(models.Model):
+    """
+    Cache for generated trip recommendations to avoid expensive API calls on every request.
+    Stores pre-computed recommendations with background generation support.
+    """
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        READY = 'ready', 'Ready'
+        FAILED = 'failed', 'Failed'
+    
+    trip = models.OneToOneField(
+        Trip,
+        on_delete=models.CASCADE,
+        related_name='recommendation_cache',
+        help_text='Trip these recommendations are for'
+    )
+    data = models.JSONField(
+        default=dict,
+        help_text='Cached recommendation data organized by category'
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.PENDING,
+        help_text='Generation status of recommendations'
+    )
+    error_message = models.TextField(
+        blank=True,
+        default='',
+        help_text='Error details if generation failed'
+    )
+    last_generated = models.DateTimeField(
+        auto_now=True,
+        help_text='When recommendations were last generated'
+    )
+    expires_at = models.DateTimeField(
+        help_text='When this cache should be considered stale'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'Trip Recommendation Cache'
+        verbose_name_plural = 'Trip Recommendation Caches'
+        ordering = ['-last_generated']
+        indexes = [
+            models.Index(fields=['trip', 'status']),
+            models.Index(fields=['expires_at']),
+        ]
+    
+    def __str__(self):
+        return f"Cache for {self.trip.title} ({self.status})"
+    
+    def is_expired(self) -> bool:
+        """Check if cache has expired."""
+        return timezone.now() > self.expires_at
+    
+    def is_ready(self) -> bool:
+        """Check if cache is ready and not expired."""
+        return self.status == self.Status.READY and not self.is_expired()
+    
+    def save(self, *args, **kwargs):
+        """Set default expiration if not provided."""
+        if not self.expires_at:
+            # Cache expires after 24 hours by default
+            self.expires_at = timezone.now() + timedelta(hours=24)
+        super().save(*args, **kwargs)

@@ -16,29 +16,32 @@ from .serializers import (
 )
 from .permissions import IsTripMember
 from .services.recommender import recommend_for_trip, get_group_analysis
+from .services.background_generator import get_or_generate_recommendations
 
 
 class TripRecommendationsView(APIView):
     """
     GET /api/trips/{trip_id}/recommendations/
     
-    Returns AI-powered destination recommendations based on:
-    - Trip destination city
-    - Group members' preferences and interests
+    Returns AI-powered destination recommendations with async generation and caching.
     
-    Uses OpenTripMap API to fetch relevant POIs.
+    Response formats:
+    - status='loading': Recommendations are being generated in background
+    - status='ready': Cached recommendations available
+    - status='error': Generation failed
     
     Query params:
-    - category: Filter by category ('nature', 'adventure', 'culture', 'gastronomy')
+    - category: Filter by category ('nature', 'adventure', 'culture', 'food', 'all')
     - limit: Maximum number of results (default: 30)
     """
     permission_classes = [IsAuthenticated, IsTripMember]
 
     def get(self, request, trip_id):
         trip = get_object_or_404(Trip, id=trip_id)
+        print(f"[DEBUG] GET recommendations for trip {trip_id}: {trip.title}, city={trip.city}")
         
         # Get query parameters
-        category = request.query_params.get('category')
+        category = request.query_params.get('category', 'all')
         if category == 'all':
             category = None
         
@@ -48,48 +51,91 @@ class TripRecommendationsView(APIView):
         except ValueError:
             limit = 30
         
-        # Generate recommendations using the new recommender
-        recommendations = recommend_for_trip(trip, category=category, limit=limit)
+        print(f"[DEBUG] Query params: category={category}, limit={limit}")
         
-        # If no OpenTripMap results, fall back to database
+        # Use cached recommendations with background generation
+        try:
+            result = get_or_generate_recommendations(trip_id, category)
+            print(f"[DEBUG] get_or_generate_recommendations returned: status={result.get('status')}, count={len(result.get('recommendations', []))}")
+        except Exception as e:
+            # FAIL-SAFE: Never crash, return empty data
+            print(f"[DEBUG] Recommendation Error: {str(e)}")
+            result = {'status': 'ready', 'recommendations': []}
+        
+        # Handle different statuses
+        if result['status'] == 'loading':
+            return Response({
+                'status': 'loading',
+                'message': result.get('message', 'Generating recommendations...'),
+            }, status=status.HTTP_202_ACCEPTED)
+        
+        # FAIL-SAFE: Convert errors to empty ready response
+        if result['status'] == 'error':
+            print(f"Recommendation Error: {result.get('message', 'Unknown error')}")
+            result = {'status': 'ready', 'recommendations': []}
+        
+        # Status is 'ready' - return cached recommendations
+        recommendations = result.get('recommendations', [])
+        
+        # Apply limit
+        recommendations = recommendations[:limit]
+        
+        # If no cached results, try database fallback
         if not recommendations:
-            city_name = trip.city or ''
-            
-            queryset = Destination.objects.filter(is_active=True)
-            
-            location_filter = Q()
-            if trip.city:
-                location_filter |= Q(city__icontains=trip.city)
-            if trip.country:
-                location_filter |= Q(country__icontains=trip.country)
-            
-            if location_filter:
-                queryset = queryset.filter(location_filter)
-            
-            if category:
-                queryset = queryset.filter(category=category)
-            
-            queryset = queryset.distinct()[:limit]
-            
-            recommendations = [
-                {
-                    'xid': f"db_{dest.id}",
-                    'name': dest.name,
-                    'city': dest.city or city_name,
-                    'image': dest.image_url or '',
-                    'short_description': dest.description,
-                    'category': dest.category,
-                    'lat': dest.lat,
-                    'lon': dest.lon,
-                    'kinds': dest.kinds,
-                    'wikipedia': '',
-                    'address': {},
-                }
-                for dest in queryset
-            ]
+            recommendations = self._get_database_fallback(trip, category, limit)
         
-        serializer = RecommendedDestinationSerializer(recommendations, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        # FAIL-SAFE: Always return valid JSON with empty array fallback
+        try:
+            serializer = RecommendedDestinationSerializer(recommendations, many=True)
+            data = serializer.data
+        except Exception as e:
+            print(f"Recommendation Serialization Error: {str(e)}")
+            data = []
+        
+        return Response({
+            'status': 'ready',
+            'recommendations': data if data else [],
+            'message': 'No recommendations available yet.' if not data else None,
+            'cached_at': result.get('cached_at'),
+            'expires_at': result.get('expires_at'),
+        }, status=status.HTTP_200_OK)
+    
+    def _get_database_fallback(self, trip, category, limit):
+        """Fallback to database destinations if cache is empty."""
+        city_name = trip.city or ''
+        
+        queryset = Destination.objects.filter(is_active=True)
+        
+        location_filter = Q()
+        if trip.city:
+            location_filter |= Q(city__icontains=trip.city)
+        if trip.country:
+            location_filter |= Q(country__icontains=trip.country)
+        
+        if location_filter:
+            queryset = queryset.filter(location_filter)
+        
+        if category:
+            queryset = queryset.filter(category=category)
+        
+        queryset = queryset.distinct()[:limit]
+        
+        return [
+            {
+                'xid': f"db_{dest.id}",
+                'name': dest.name,
+                'city': dest.city or city_name,
+                'image': dest.image_url or '',
+                'short_description': dest.description,
+                'category': dest.category,
+                'lat': dest.lat,
+                'lon': dest.lon,
+                'kinds': dest.kinds,
+                'wikipedia': '',
+                'address': {},
+            }
+            for dest in queryset
+        ]
 
 
 class TripGroupAnalysisView(APIView):

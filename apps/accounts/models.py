@@ -125,6 +125,26 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name='Authentication Provider',
         help_text='The method used to authenticate this user.'
     )
+    bio = models.TextField(
+        blank=True,
+        default='',
+        verbose_name='Bio',
+        help_text='Short biography or description of the user.'
+    )
+    profile_picture = models.ImageField(
+        upload_to='profile_pictures/',
+        null=True,
+        blank=True,
+        verbose_name='Profile Picture',
+        help_text='Uploaded profile photo.'
+    )
+    google_picture_url = models.URLField(
+        max_length=500,
+        null=True,
+        blank=True,
+        verbose_name='Google Picture URL',
+        help_text='Profile picture URL from Google OAuth.'
+    )
 
     objects = UserManager()
 

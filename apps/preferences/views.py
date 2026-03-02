@@ -1,5 +1,6 @@
 from rest_framework import status, generics, permissions, views
 from rest_framework.response import Response
+from django.db.models import Q
 from .models import Preference, Interest
 from .serializers import (
     PreferenceSerializer, 
@@ -65,9 +66,31 @@ class UserPreferenceView(views.APIView):
 
 class InterestListView(generics.ListCreateAPIView):
     """
-    GET: List all available interests.
-    POST: Create a new interest (Authenticated only).
+    GET:  List interests visible to the requesting user:
+          - all is_default=True interests (global/seeded)
+          - the user's own custom interests (is_default=False, created_by=user)
+    POST: Create a new custom interest for the authenticated user.
+          The interest is private (is_default=False) and only visible to its creator.
     """
-    queryset = Interest.objects.filter(is_active=True)
     serializer_class = InterestSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return Interest.objects.filter(
+            Q(is_default=True) | Q(created_by=user),
+            is_active=True
+        ).order_by('is_default', 'name')
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['request'] = self.request
+        return ctx
+
+    def perform_create(self, serializer):
+        """Save a new custom interest owned by the requesting user."""
+        serializer.save(
+            is_default=False,
+            created_by=self.request.user,
+            is_active=True
+        )

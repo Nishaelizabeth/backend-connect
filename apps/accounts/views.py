@@ -19,6 +19,7 @@ from .serializers import (
     LoginSerializer,
     UserSerializer,
     GoogleAuthSerializer,
+    ProfileUpdateSerializer,
 )
 
 User = get_user_model()
@@ -112,7 +113,7 @@ class UserDetailView(generics.RetrieveAPIView):
         - Authorization: Bearer <access_token>
     
     Response (200 OK):
-        - User object (id, email, full_name, is_active, date_joined, auth_provider)
+        - User object (id, email, full_name, bio, profile_picture_url, ...)
     
     Response (401 Unauthorized):
         - Authentication credentials were not provided
@@ -121,8 +122,41 @@ class UserDetailView(generics.RetrieveAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_serializer_context(self):
+        return {'request': self.request}
+
     def get_object(self):
         return self.request.user
+
+
+class ProfileUpdateView(generics.UpdateAPIView):
+    """
+    PATCH /api/auth/profile/
+
+    Update the authenticated user's bio and/or profile picture.
+    Supports multipart/form-data for file uploads.
+
+    Fields:
+        - bio (string, optional)
+        - profile_picture (file, optional)
+        - remove_picture (boolean, optional) – set true to delete current photo
+    """
+    serializer_class = ProfileUpdateSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['patch']
+
+    def get_object(self):
+        return self.request.user
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(
+            UserSerializer(user, context={'request': request}).data,
+            status=status.HTTP_200_OK
+        )
 
 
 class GoogleAuthView(APIView):

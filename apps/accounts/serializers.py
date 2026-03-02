@@ -139,13 +139,19 @@ class UserSerializer(serializers.ModelSerializer):
     """
     Read-only serializer for user profile data.
     """
-    
+    has_preferences = serializers.SerializerMethodField()
+    profile_picture_url = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
             'id',
             'email',
             'full_name',
+            'bio',
+            'profile_picture',
+            'profile_picture_url',
+            'google_picture_url',
             'is_active',
             'date_joined',
             'auth_provider',
@@ -153,11 +159,51 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    has_preferences = serializers.SerializerMethodField()
-
     def get_has_preferences(self, obj):
         """Check if the user has created preferences."""
         return hasattr(obj, 'preferences')
+
+    def get_profile_picture_url(self, obj):
+        """
+        Returns the best available profile picture URL:
+        uploaded picture > google picture url > None (frontend uses initial letter fallback)
+        """
+        request = self.context.get('request')
+        if obj.profile_picture:
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        if obj.google_picture_url:
+            return obj.google_picture_url
+        return None
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for updating user profile: bio and profile picture.
+    Supports removing the profile picture by passing remove_picture=true.
+    """
+    remove_picture = serializers.BooleanField(write_only=True, required=False, default=False)
+
+    class Meta:
+        model = User
+        fields = ['bio', 'profile_picture', 'remove_picture']
+
+    def update(self, instance, validated_data):
+        remove_picture = validated_data.pop('remove_picture', False)
+        if remove_picture:
+            if instance.profile_picture:
+                instance.profile_picture.delete(save=False)
+            instance.profile_picture = None
+        bio = validated_data.get('bio', None)
+        if bio is not None:
+            instance.bio = bio
+        if 'profile_picture' in validated_data and validated_data['profile_picture']:
+            if instance.profile_picture:
+                instance.profile_picture.delete(save=False)
+            instance.profile_picture = validated_data['profile_picture']
+        instance.save()
+        return instance
 
 
 class GoogleAuthSerializer(serializers.Serializer):
@@ -202,6 +248,7 @@ class GoogleAuthSerializer(serializers.Serializer):
                 'email': user_info.get('email'),
                 'full_name': user_info.get('name', ''),
                 'google_id': user_info.get('sub'),
+                'picture_url': user_info.get('picture', ''),
             }
 
         except Exception as e:
@@ -216,16 +263,17 @@ class GoogleAuthSerializer(serializers.Serializer):
 
         try:
             user = User.objects.get(email=email)
-            # Update user info if they're logging in with Google for the first time
-            if user.auth_provider == User.AuthProvider.EMAIL:
-                # User originally registered with email, now linking Google
-                pass
+            # Update Google picture if not already set
+            if google_data.get('picture_url') and not user.google_picture_url:
+                user.google_picture_url = google_data['picture_url']
+                user.save(update_fields=['google_picture_url'])
         except User.DoesNotExist:
             # Create new user from Google data
             user = User.objects.create_user(
                 email=email,
                 full_name=google_data['full_name'],
-                auth_provider=User.AuthProvider.GOOGLE
+                auth_provider=User.AuthProvider.GOOGLE,
+                google_picture_url=google_data.get('picture_url', '')
             )
 
         return user

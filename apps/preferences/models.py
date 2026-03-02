@@ -5,9 +5,25 @@ from django.utils.translation import gettext_lazy as _
 class Interest(models.Model):
     """
     Represents a specific travel interest (e.g., Beaches, Mountains, Food).
+
+    is_default=True  → visible and selectable by ALL users (seeded/admin interests)
+    is_default=False → private to the user who created it (created_by)
     """
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
     is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(
+        default=True,
+        help_text=_('If True, this interest is visible to all users. '
+                    'If False, it is private to the user who created it.')
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='custom_interests',
+        help_text=_('The user who created this interest. Null for default/global interests.')
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -15,6 +31,20 @@ class Interest(models.Model):
         ordering = ['name']
         verbose_name = _('Interest')
         verbose_name_plural = _('Interests')
+        constraints = [
+            # Default interests: name must be globally unique among defaults
+            models.UniqueConstraint(
+                fields=['name'],
+                condition=models.Q(is_default=True),
+                name='unique_default_interest_name'
+            ),
+            # User interests: same user cannot create duplicate interest names
+            models.UniqueConstraint(
+                fields=['name', 'created_by'],
+                condition=models.Q(is_default=False),
+                name='unique_user_interest_name'
+            ),
+        ]
 
     def __str__(self):
         return self.name

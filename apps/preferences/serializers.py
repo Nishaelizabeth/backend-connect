@@ -2,10 +2,19 @@ from rest_framework import serializers
 from .models import Preference, Interest, PreferenceInterest
 
 class InterestSerializer(serializers.ModelSerializer):
+    is_mine = serializers.SerializerMethodField()
+
     class Meta:
         model = Interest
-        fields = ['id', 'name', 'is_active']
-        read_only_fields = ['id', 'name', 'is_active']
+        fields = ['id', 'name', 'is_active', 'is_default', 'is_mine']
+        read_only_fields = ['id', 'is_active', 'is_default', 'is_mine']
+
+    def get_is_mine(self, obj):
+        """Returns True if this interest was created by the requesting user."""
+        request = self.context.get('request')
+        if request and not obj.is_default:
+            return obj.created_by_id == request.user.id
+        return False
 
 class PreferenceSerializer(serializers.ModelSerializer):
     interest_ids = serializers.ListField(
@@ -28,11 +37,21 @@ class PreferenceSerializer(serializers.ModelSerializer):
 
     def validate_interest_ids(self, value):
         """
-        Validate that all provided interest IDs exist.
+        Validate that all provided interest IDs exist and are accessible by this user.
+        An interest is accessible if it is a default interest or was created by this user.
         """
-        interests = Interest.objects.filter(id__in=value, is_active=True)
-        if len(interests) != len(value):
-            raise serializers.ValidationError("One or more interest IDs are invalid or inactive.")
+        request = self.context.get('request')
+        user = request.user if request else None
+        from django.db.models import Q
+        accessible = Interest.objects.filter(
+            Q(is_default=True) | Q(created_by=user),
+            id__in=value,
+            is_active=True
+        )
+        if accessible.count() != len(set(value)):
+            raise serializers.ValidationError(
+                "One or more interest IDs are invalid, inactive, or not accessible."
+            )
         return value
 
     def create(self, validated_data):

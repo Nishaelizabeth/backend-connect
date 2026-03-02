@@ -17,6 +17,7 @@ from .views import (
     LoginView,
     UserDetailView,
     GoogleAuthView,
+    ProfileUpdateView,
 )
 
 app_name = 'accounts'
@@ -26,6 +27,7 @@ urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),
     path('me/', UserDetailView.as_view(), name='me'),
+    path('profile/', ProfileUpdateView.as_view(), name='profile-update'),
     path('google/', GoogleAuthView.as_view(), name='google'),
     
     # JWT token management

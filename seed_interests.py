@@ -14,7 +14,11 @@ INTERESTS = [
 
 created_count = 0
 for name in INTERESTS:
-    interest, created = Interest.objects.get_or_create(name=name, defaults={'is_active': True})
+    interest, created = Interest.objects.get_or_create(
+        name=name,
+        is_default=True,
+        defaults={'is_active': True, 'created_by': None}
+    )
     if created:
         created_count += 1
         print(f"Created interest: {name}")

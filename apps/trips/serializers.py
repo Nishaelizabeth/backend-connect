@@ -3,11 +3,27 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from rest_framework import serializers
 
-from .models import Trip, TripMember
+from .models import Trip, TripMember, TripImage
 from apps.buddies.models import BuddyRequest
 from apps.notifications.models import Notification
 
 User = get_user_model()
+
+
+class TripImageSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TripImage
+        fields = ('id', 'url', 'caption', 'position', 'uploaded_at')
+
+    def get_url(self, obj):
+        request = self.context.get('request')
+        if obj.image and request:
+            return request.build_absolute_uri(obj.image.url)
+        elif obj.image:
+            return obj.image.url
+        return None
 
 
 class TripMemberNestedSerializer(serializers.Serializer):
@@ -157,13 +173,14 @@ class TripListSerializer(serializers.ModelSerializer):
     creator_id = serializers.IntegerField(source='creator.id', read_only=True)
     destination = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
+    images = TripImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = Trip
         fields = (
             'id', 'title', 'destination', 'city', 'region', 'country',
             'latitude', 'longitude', 'start_date', 'end_date', 
-            'status', 'member_count', 'cover_image', 'creator_id'
+            'status', 'member_count', 'cover_image', 'creator_id', 'images'
         )
 
     def get_member_count(self, obj):
@@ -195,6 +212,7 @@ class TripDetailSerializer(serializers.ModelSerializer):
     destination = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
     weather = serializers.SerializerMethodField()
+    images = TripImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = Trip
@@ -202,7 +220,7 @@ class TripDetailSerializer(serializers.ModelSerializer):
             'id', 'title', 'destination', 'city', 'region', 'country',
             'latitude', 'longitude', 'start_date', 'end_date', 
             'status', 'created_at', 'members', 'cover_image', 'creator_id',
-            'weather'
+            'weather', 'images'
         )
     
     def get_destination(self, obj):

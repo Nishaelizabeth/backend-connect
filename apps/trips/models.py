@@ -85,6 +85,21 @@ class TripMember(models.Model):
         return f"{self.user} in {self.trip} ({self.status})"
 
 
+class TripImage(models.Model):
+    """Inspiration images uploaded by the trip creator (max 6 per trip)."""
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='trip_images/')
+    caption = models.CharField(max_length=200, blank=True, default='')
+    position = models.PositiveSmallIntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['position', 'uploaded_at']
+
+    def __str__(self):
+        return f"Image {self.position} for {self.trip.title}"
+
+
 class TripWeatherCache(models.Model):
     """
     Cached weather data for trips.

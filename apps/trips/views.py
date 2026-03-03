@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from .models import Trip, TripMember
+from .models import Trip, TripMember, TripImage
 from .serializers import TripCreateSerializer, TripListSerializer, TripDetailSerializer
 from apps.notifications.models import Notification
 
@@ -47,30 +47,59 @@ class TripListCreateAPIView(APIView):
             Q(creator=user) | Q(members__user=user, members__status=TripMember.MembershipStatus.ACCEPTED)
         ).distinct().select_related('creator').prefetch_related('members__user').order_by('start_date')
 
-        serializer = TripListSerializer(trips, many=True)
+        serializer = TripListSerializer(trips, many=True, context={'request': request})
         return Response(serializer.data)
 
     def post(self, request):
+        import json
         print(f"[DEBUG] Trip creation request data: {request.data}")
-        serializer = TripCreateSerializer(data=request.data, context={'request': request})
+
+        # Build a plain dict so we can freely mutate values (QueryDict copy is unreliable for lists).
+        data = {key: request.data[key] for key in request.data}
+
+        # Parse invited_user_ids from JSON string (FormData sends it as '[11, 12]')
+        raw_ids = data.get('invited_user_ids', '[]')
+        if isinstance(raw_ids, str):
+            try:
+                data['invited_user_ids'] = json.loads(raw_ids)
+            except (json.JSONDecodeError, TypeError):
+                data['invited_user_ids'] = []
+        elif not isinstance(raw_ids, list):
+            data['invited_user_ids'] = []
+
+        # Coerce numeric string fields to floats for the serializer
+        for field in ('latitude', 'longitude'):
+            val = data.get(field)
+            if isinstance(val, str) and val:
+                try:
+                    data[field] = float(val)
+                except ValueError:
+                    pass
+
+        serializer = TripCreateSerializer(data=data, context={'request': request})
         if not serializer.is_valid():
             print(f"[DEBUG] Trip validation errors: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         trip = serializer.save()
-        
+
+        # Handle image uploads (up to 6)
+        images = request.FILES.getlist('images')
+        for idx, img_file in enumerate(images[:6]):
+            TripImage.objects.create(trip=trip, image=img_file, position=idx)
+
         # Attempt geocoding if coordinates not provided
         geocode_trip_location(trip)
-        
-        out = TripDetailSerializer(trip)
+
+        out = TripDetailSerializer(trip, context={'request': request})
         response_data = out.data
-        
+
         # Include warnings if any users have date conflicts
         if hasattr(trip, '_date_conflict_warnings') and trip._date_conflict_warnings:
             response_data['warnings'] = {
                 'message': 'Some invited users have date conflicts with existing trips',
                 'conflicts': trip._date_conflict_warnings
             }
-        
+
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 
@@ -91,7 +120,7 @@ class TripDetailAPIView(APIView):
         if not is_creator and not is_member:
             return Response({'detail': 'You do not have access to this trip.'}, status=status.HTTP_403_FORBIDDEN)
 
-        serializer = TripDetailSerializer(trip)
+        serializer = TripDetailSerializer(trip, context={'request': request})
         return Response(serializer.data)
 
 

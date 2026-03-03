@@ -1,5 +1,11 @@
 from django.contrib import admin
-from .models import Trip, TripMember
+from .models import Trip, TripMember, TripImage
+
+
+class TripImageInline(admin.TabularInline):
+    model = TripImage
+    extra = 0
+    max_num = 6
 
 
 @admin.register(Trip)
@@ -7,6 +13,7 @@ class TripAdmin(admin.ModelAdmin):
     list_display = ('title', 'destination', 'creator', 'start_date', 'end_date', 'status')
     list_filter = ('status', 'start_date')
     search_fields = ('title', 'destination', 'creator__email')
+    inlines = [TripImageInline]
 
 
 @admin.register(TripMember)

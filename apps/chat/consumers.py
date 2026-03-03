@@ -193,6 +193,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'type': 'system_message',
             'message': event['message']
         }))
+
+    async def poll_update(self, event):
+        """
+        Send poll update to WebSocket.
+        Adds user-specific vote data based on voters_per_option.
+        """
+        poll = dict(event['poll'])
+        voters_per_option = poll.get('voters_per_option', {})
+        user_vote_option_ids = [
+            int(opt_id)
+            for opt_id, voter_ids in voters_per_option.items()
+            if self.user.id in voter_ids
+        ]
+        poll['user_vote_option_ids'] = user_vote_option_ids
+
+        await self.send(text_data=json.dumps({
+            'type': 'poll_update',
+            'poll': poll
+        }))
     
     async def send_error(self, error_message):
         """
@@ -237,13 +256,47 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def format_message(self, message):
         """
         Format message object for JSON serialization.
+        Includes poll data if the message is a poll type.
         """
-        return {
+        data = {
             'id': message.id,
             'sender_id': message.sender.id if message.sender else None,
             'sender_name': message.sender.full_name if message.sender else 'System',
-            'sender_avatar': None,  # User model doesn't have avatar field
+            'sender_avatar': None,
             'content': message.content,
+            'message_type': getattr(message, 'message_type', 'text'),
             'created_at': message.created_at.isoformat(),
             'is_system': message.is_system
         }
+
+        if getattr(message, 'message_type', 'text') == 'poll':
+            try:
+                poll = message.poll
+                voters_per_option = {}
+                for vote in poll.votes.select_related('option').all():
+                    opt_id = str(vote.option_id)
+                    if opt_id not in voters_per_option:
+                        voters_per_option[opt_id] = []
+                    voters_per_option[opt_id].append(vote.voter_id)
+
+                user_vote_option_ids = list(
+                    poll.votes.filter(voter=self.user).values_list('option_id', flat=True)
+                )
+                data['poll'] = {
+                    'id': poll.id,
+                    'message_id': message.id,
+                    'question': poll.question,
+                    'allow_multiple': poll.allow_multiple,
+                    'is_closed': poll.is_closed,
+                    'options': [
+                        {'id': o.id, 'text': o.text, 'order': o.order, 'vote_count': o.votes.count()}
+                        for o in poll.options.all()
+                    ],
+                    'total_votes': poll.votes.values('voter').distinct().count(),
+                    'user_vote_option_ids': user_vote_option_ids,
+                    'voters_per_option': voters_per_option,
+                }
+            except Exception:
+                pass
+
+        return data

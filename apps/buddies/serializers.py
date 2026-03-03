@@ -33,6 +33,8 @@ class BuddyMatchSerializer(serializers.Serializer):
     matched_user_id = serializers.IntegerField(source='user.id')
     matched_user_name = serializers.CharField(source='user.full_name')
     matched_user_email = serializers.EmailField(source='user.email')
+    matched_user_bio = serializers.CharField(source='user.bio', default='', allow_blank=True)
+    matched_user_profile_picture_url = serializers.SerializerMethodField()
     shared_interests = serializers.ListField(
         child=serializers.CharField(),
         help_text='List of shared interest names'
@@ -52,11 +54,28 @@ class BuddyMatchSerializer(serializers.Serializer):
             'matched_user_id',
             'matched_user_name',
             'matched_user_email',
+            'matched_user_bio',
+            'matched_user_profile_picture_url',
             'shared_interests',
             'match_score',
             'request_status',
             'request_id',
         ]
+
+    def get_matched_user_profile_picture_url(self, obj):
+        """
+        Returns the best available profile picture URL for the matched user:
+        uploaded picture > google picture url > None
+        """
+        user = obj['user']
+        request = self.context.get('request')
+        if user.profile_picture:
+            if request:
+                return request.build_absolute_uri(user.profile_picture.url)
+            return user.profile_picture.url
+        if user.google_picture_url:
+            return user.google_picture_url
+        return None
 
     def get_request_status(self, obj):
         request = self.context.get('request')

@@ -274,6 +274,7 @@ class TripInvitationSerializer(serializers.Serializer):
     status = serializers.CharField()
     joined_at = serializers.DateTimeField(allow_null=True)
     members = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     
     def get_destination(self, obj):
         return obj.trip.display_destination or obj.trip.destination
@@ -282,6 +283,10 @@ class TripInvitationSerializer(serializers.Serializer):
         """Return all members (accepted and invited) for this trip."""
         trip_members = obj.trip.members.all()
         return TripMemberNestedSerializer(trip_members, many=True).data
+
+    def get_images(self, obj):
+        """Return serialized trip images."""
+        return TripImageSerializer(obj.trip.images.all(), many=True).data
 
 
 # =============================================================================

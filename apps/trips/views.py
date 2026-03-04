@@ -388,7 +388,8 @@ class InvitationsListAPIView(APIView):
             'user', 
             'trip'
         ).prefetch_related(
-            'trip__members__user'
+            'trip__members__user',
+            'trip__images',
         )
 
         from .serializers import TripInvitationSerializer

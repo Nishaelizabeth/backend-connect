@@ -67,6 +67,7 @@ class TripMember(models.Model):
         INVITED = 'invited', 'Invited'
         ACCEPTED = 'accepted', 'Accepted'
         REJECTED = 'rejected', 'Rejected'
+        LEFT = 'left', 'Left'
 
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='members')
     user = models.ForeignKey(

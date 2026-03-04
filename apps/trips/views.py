@@ -45,6 +45,9 @@ class TripListCreateAPIView(APIView):
         user = request.user
         trips = Trip.objects.filter(
             Q(creator=user) | Q(members__user=user, members__status=TripMember.MembershipStatus.ACCEPTED)
+        ).exclude(
+            # Hide trips the user left (but keep trips they created)
+            members__user=user, members__status=TripMember.MembershipStatus.LEFT,
         ).distinct().select_related('creator').prefetch_related('members__user').order_by('start_date')
 
         serializer = TripListSerializer(trips, many=True, context={'request': request})
@@ -119,6 +122,16 @@ class TripDetailAPIView(APIView):
     def get(self, request, pk):
         trip = get_object_or_404(Trip, pk=pk)
         user = request.user
+
+        # Check if user left this trip
+        has_left = TripMember.objects.filter(
+            trip=trip, user=user, status=TripMember.MembershipStatus.LEFT
+        ).exists()
+        if has_left:
+            return Response(
+                {'error': 'LEFT_TRIP', 'message': 'You left this trip.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         # Check if user is creator or accepted member
         is_creator = trip.creator == user
@@ -275,12 +288,15 @@ class AcceptTripAPIView(APIView):
         if membership.status != TripMember.MembershipStatus.INVITED:
             return Response({'detail': 'Invitation cannot be accepted.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check for date overlaps before accepting
-        from .utils import check_date_overlap, format_date_overlap_error
-        overlap_result = check_date_overlap(request.user, trip.start_date, trip.end_date)
-        if overlap_result['has_overlap']:
-            error_msg = format_date_overlap_error(overlap_result['overlapping_trips'])
-            return Response({'detail': error_msg}, status=status.HTTP_400_BAD_REQUEST)
+        # Check for date overlaps – return conflict info instead of blocking
+        from .services.conflict_service import detect_conflicts
+        conflicts = detect_conflicts(request.user, trip)
+        if conflicts:
+            return Response({
+                'conflict': True,
+                'conflicting_trips': conflicts,
+                'message': 'You have overlapping trips. Use accept-with-conflict to proceed.',
+            }, status=status.HTTP_409_CONFLICT)
 
         membership.status = TripMember.MembershipStatus.ACCEPTED
         membership.joined_at = timezone.now()
@@ -294,6 +310,37 @@ class AcceptTripAPIView(APIView):
         )
 
         return Response({'detail': 'Invitation accepted.'})
+
+
+class AcceptWithConflictAPIView(APIView):
+    """POST /api/trips/<pk>/accept-with-conflict/ — accept invitation and leave conflicting trips."""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, pk):
+        trip = get_object_or_404(Trip, pk=pk)
+
+        try:
+            membership = TripMember.objects.get(
+                trip=trip, user=request.user,
+                status=TripMember.MembershipStatus.INVITED,
+            )
+        except TripMember.DoesNotExist:
+            return Response(
+                {'detail': 'No pending invitation for this trip.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from .services.conflict_service import accept_with_conflict_resolution
+
+        try:
+            accept_with_conflict_resolution(request.user, trip)
+        except Exception as exc:
+            return Response(
+                {'detail': f'Failed to resolve conflicts: {exc}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({'detail': 'Invitation accepted. Conflicting trips resolved.'})
 
 
 class RejectTripAPIView(APIView):

@@ -11,6 +11,7 @@ urlpatterns = [
     path('<int:pk>/invite/', views.InviteToTripAPIView.as_view(), name='trip-invite'),
     path('invitations/', views.InvitationsListAPIView.as_view(), name='invitations-list'),
     path('<int:pk>/accept/', views.AcceptTripAPIView.as_view(), name='trip-accept'),
+    path('<int:pk>/accept-with-conflict/', views.AcceptWithConflictAPIView.as_view(), name='trip-accept-with-conflict'),
     path('<int:pk>/reject/', views.RejectTripAPIView.as_view(), name='trip-reject'),
     path('<int:pk>/leave/', views.LeaveTripAPIView.as_view(), name='trip-leave'),
     path('dashboard/stats/', views.DashboardStatsView.as_view(), name='dashboard-stats'),

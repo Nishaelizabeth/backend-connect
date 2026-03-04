@@ -275,6 +275,7 @@ class TripInvitationSerializer(serializers.Serializer):
     joined_at = serializers.DateTimeField(allow_null=True)
     members = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    conflict = serializers.SerializerMethodField()
     
     def get_destination(self, obj):
         return obj.trip.display_destination or obj.trip.destination
@@ -287,6 +288,19 @@ class TripInvitationSerializer(serializers.Serializer):
     def get_images(self, obj):
         """Return serialized trip images."""
         return TripImageSerializer(obj.trip.images.all(), many=True).data
+
+    def get_conflict(self, obj):
+        """Detect overlapping trips for the invited user."""
+        from apps.trips.services.conflict_service import detect_conflicts
+        conflicts = detect_conflicts(obj.user, obj.trip)
+        if not conflicts:
+            return None
+        # Return the first (most relevant) conflict
+        first = conflicts[0]
+        return {
+            'conflicting_trip': first,
+            'total_conflicts': len(conflicts),
+        }
 
 
 # =============================================================================

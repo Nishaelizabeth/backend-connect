@@ -264,11 +264,19 @@ class AcceptedBuddiesListView(views.APIView):
             except Exception:
                 pass
             
+            # Build profile picture URL
+            avatar_url = None
+            if match.matched_user.profile_picture:
+                try:
+                    avatar_url = request.build_absolute_uri(match.matched_user.profile_picture.url)
+                except Exception:
+                    avatar_url = match.matched_user.profile_picture.url
+
             buddies.append({
                 'id': match.matched_user.id,
                 'full_name': match.matched_user.full_name or match.matched_user.email.split('@')[0],
                 'email': match.matched_user.email,
-                'avatar_url': None,  # Add avatar support when available
+                'avatar_url': avatar_url,
                 'primary_interest': primary_interest,
                 'match_score': match.match_score,
                 'connected_at': match.created_at,

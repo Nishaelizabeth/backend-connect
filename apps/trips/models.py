@@ -88,7 +88,8 @@ class TripMember(models.Model):
 class TripImage(models.Model):
     """Inspiration images uploaded by the trip creator (max 6 per trip)."""
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='images')
-    image = models.ImageField(upload_to='trip_images/')
+    image_data = models.TextField(blank=True, default='', help_text='Base64-encoded image bytes')
+    content_type = models.CharField(max_length=50, blank=True, default='image/jpeg', help_text='MIME type of the image')
     caption = models.CharField(max_length=200, blank=True, default='')
     position = models.PositiveSmallIntegerField(default=0)
     uploaded_at = models.DateTimeField(auto_now_add=True)

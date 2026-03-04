@@ -12,11 +12,11 @@ class Destination(models.Model):
     Cached destination data from OpenTripMap or manual entry.
     """
     class Category(models.TextChoices):
-        NATURE = 'nature', 'Nature'
-        CULTURE = 'culture', 'Culture'
-        ADVENTURE = 'adventure', 'Adventure'
-        FOOD = 'food', 'Food'
-        LEISURE = 'leisure', 'Leisure'
+        NATURE = 'Nature', 'Nature'
+        CULTURE = 'Culture', 'Culture'
+        HERITAGE = 'Heritage', 'Heritage'
+        ADVENTURE = 'Adventure', 'Adventure'
+        ATTRACTION = 'Attraction', 'Attraction'
 
     # OpenTripMap identifier (unique for API-sourced destinations)
     xid = models.CharField(max_length=100, unique=True, null=True, blank=True)
@@ -64,7 +64,7 @@ class Destination(models.Model):
             defaults={
                 'name': data.get('name', 'Unknown'),
                 'city': data.get('city', ''),
-                'category': data.get('category', 'culture'),
+                'category': data.get('category', 'Attraction'),
                 'description': data.get('short_description', ''),
                 'image_url': data.get('image', ''),
                 'lat': data.get('lat'),

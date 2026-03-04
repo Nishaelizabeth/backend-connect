@@ -36,7 +36,7 @@ class RecommendedDestinationSerializer(serializers.Serializer):
     )
     short_description = serializers.CharField(allow_blank=True, required=False)
     category = serializers.ChoiceField(
-        choices=['nature', 'adventure', 'culture', 'food', 'gastronomy', 'leisure']
+        choices=['Nature', 'Culture', 'Heritage', 'Adventure', 'Attraction']
     )
     lat = serializers.FloatField(allow_null=True, required=False)
     lon = serializers.FloatField(allow_null=True, required=False)

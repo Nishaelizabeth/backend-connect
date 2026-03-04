@@ -82,7 +82,7 @@ def _generate_recommendations_worker(trip_id: int) -> None:
         # Single fetch — get all destinations for the trip location
         try:
             print(f"[GENERATOR] Fetching destinations for trip location...")
-            recommendations = recommender.recommend(limit=30)
+            recommendations = recommender.recommend(limit=12)
             print(f"[GENERATOR] Got {len(recommendations)} destinations")
         except Exception as e:
             print(f"[GENERATOR] ERROR fetching destinations: {str(e)}")

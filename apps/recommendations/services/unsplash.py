@@ -172,40 +172,23 @@ class UnsplashService:
         
         # Check if Unsplash is temporarily disabled
         if cache.get(UNSPLASH_DISABLED_KEY):
-            logger.warning("⚠ Unsplash API disabled - using category fallback immediately")
-            
-            # Use curated fallback with rotation
-            fallback_images = CATEGORY_FALLBACK_IMAGES.get(category, CATEGORY_FALLBACK_IMAGES.get('culture', []))
-            if isinstance(fallback_images, list) and len(fallback_images) > 0:
-                hash_str = f"{place_name}_{city}_{country}".lower()
-                hash_obj = hashlib.md5(hash_str.encode())
-                index = int(hash_obj.hexdigest(), 16) % len(fallback_images)
-                fallback_url = fallback_images[index]
-            elif isinstance(fallback_images, str) and fallback_images:
-                fallback_url = fallback_images
-            else:
-                # No fallback images configured - return empty
-                return '', 'fallback'
-            
-            return fallback_url, 'fallback'
+            logger.warning("Unsplash API disabled - returning empty")
+            return '', 'fallback'
         
         # Normalize inputs
         place_name = place_name.strip()
         city = city.strip()
         country = country.strip()
         
-        # Build fallback queries in priority order
-        # Build search queries - ONLY use specific queries, not generic ones
-        # Avoid generic queries like "Goa culture" that return same image for all places
+        # Build search queries — best-to-broadest, always with "travel" for relevance
         search_queries = []
         
-        # STEP 1: Try specific place name searches only
+        if place_name and city:
+            search_queries.append(f"{place_name} {city} travel")
+        if place_name:
+            search_queries.append(f"{place_name} travel")
         if place_name and city and country:
             search_queries.append(f"{place_name} {city} {country}")
-        if place_name and city:
-            search_queries.append(f"{place_name} {city}")
-        if place_name:
-            search_queries.append(place_name)
         
         # Try specific queries only
         for query in search_queries:
@@ -240,28 +223,10 @@ class UnsplashService:
                 
                 return image_url, 'unsplash'
         
-        # STEP 2: All specific searches failed - use UNIQUE curated fallback
-        # Use place name hash to ensure different places get different images
-        print(f"[DEBUG] Using curated fallback for: {place_name} (category: {category})")
-        logger.info(f"⚠ Using curated fallback for: {place_name}")
-        
-        # Get category fallback images and rotate through them based on place name
-        fallback_images = CATEGORY_FALLBACK_IMAGES.get(category, CATEGORY_FALLBACK_IMAGES.get('culture', []))
-        if isinstance(fallback_images, list) and len(fallback_images) > 0:
-            # Use hash of place name to consistently select different images for different places
-            hash_str = f"{place_name}_{city}_{country}".lower()
-            hash_obj = hashlib.md5(hash_str.encode())
-            index = int(hash_obj.hexdigest(), 16) % len(fallback_images)
-            fallback_url = fallback_images[index]
-            print(f"[DEBUG] Fallback image index {index} for: {place_name}")
-        elif isinstance(fallback_images, str) and fallback_images:
-            fallback_url = fallback_images
-        else:
-            # No fallback images configured - return empty (no hardcoded images policy)
-            print(f"[DEBUG] No fallback image available for category: {category}")
-            return '', 'fallback'
-        
-        return fallback_url, 'fallback'
+        # STEP 2: All Unsplash searches failed — return empty (frontend shows gradient)
+        print(f"[DEBUG] No Unsplash image found for: {place_name} (category: {category})")
+        logger.info(f"No image found for: {place_name}")
+        return '', 'fallback'
 
 
 # Singleton instance

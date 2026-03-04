@@ -82,16 +82,15 @@ class OpenTripMapService:
             logger.info(f"OpenTripMap response type: {type(result)}, content: {str(result)[:200]}")
             
             if isinstance(result, list):
-                # Include places without names but with xid - can still be useful
+                # Require both xid AND a meaningful name (≥3 chars)
                 places = [
                     place for place in result
-                    if place.get('xid')  # Only require xid, not name
+                    if place.get('xid') and place.get('name', '').strip() and len(place.get('name', '').strip()) >= 3
                 ]
-                print(f"[DEBUG] Total places from API: {len(result)}, After filter (xid required): {len(places)}")
-                # Log first few if available
+                print(f"[DEBUG] Total places from API: {len(result)}, After filter (xid+name): {len(places)}")
                 if result and len(result) > 0:
                     print(f"[DEBUG] First raw place example: {result[0]}")
-                logger.info(f"Found {len(places)} places near ({lat}, {lon})")
+                logger.info(f"Found {len(places)} named places near ({lat}, {lon})")
                 return places
             elif isinstance(result, dict):
                 # API might return error as dict

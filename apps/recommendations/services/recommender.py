@@ -4,9 +4,20 @@ Trip Recommendation Service.
 Generates personalized destination recommendations based on:
 - Trip destination coordinates (from DB or geocoded)
 - Trip members preferences and interests
+
+Quality pipeline:
+1. Fetch POIs from OpenTripMap (curated kinds whitelist)
+2. Strict name filtering (reject generic / empty / junk names)
+3. Distance validation (within 30 km of trip centre)
+4. Coordinate-based deduplication
+5. Smart category mapping (Nature, Culture, Heritage, Adventure, Attraction)
+6. Quality scoring (popularity + wikipedia + image)
+7. Unsplash image resolution (<place> <city> travel)
+8. Return top-12 scored results
 """
 
 import logging
+import math
 import hashlib
 from typing import Optional, List, Dict, Any
 from collections import Counter
@@ -49,6 +60,56 @@ KNOWN_CITY_COORDINATES = {
     'barcelona': (41.3851, 2.1734),
 }
 
+# ────────────────────────────────────────────────────────────────
+# CURATED WHITELIST — only these OpenTripMap kinds are fetched
+# ────────────────────────────────────────────────────────────────
+ALLOWED_OTM_KINDS = {
+    'tourism', 'natural', 'historic', 'architecture', 'cultural',
+    'museums', 'monuments_and_memorials', 'temples', 'beaches',
+    'view_points', 'national_parks', 'castles', 'churches',
+    'waterfalls', 'mountain_peaks', 'gardens_and_parks',
+    'archaeological_sites', 'theatres_and_entertainments',
+    'bridges', 'towers', 'lighthouses', 'zoos',
+    'geological_formations', 'sport', 'amusements',
+    'urban_environment', 'pools',
+    'interesting_places', 'other',
+}
+
+# ────────────────────────────────────────────────────────────────
+# STRICT NAME REJECT LIST — any place whose name matches is dropped
+# ────────────────────────────────────────────────────────────────
+REJECTED_NAMES = {
+    'religion', 'view points', 'culture', 'nature', 'unknown',
+    'viewpoints', 'other', 'sport', 'stadiums', 'stadium',
+    'historic', 'cultural', 'interesting places', 'water',
+    'geological formations', 'burial places', 'cemeteries',
+    'churches', 'monuments', 'architecture', 'museums',
+    'amusements', 'foods', 'shops', 'natural', 'beaches',
+    'industrial facilities', 'fortifications',
+}
+
+# ────────────────────────────────────────────────────────────────
+# CATEGORY MAPPING — deterministic rules, no inference from kinds
+# ────────────────────────────────────────────────────────────────
+# Priority-ordered: first matching rule wins.
+CATEGORY_RULES: List[tuple] = [
+    # Nature
+    (['natural', 'beach', 'mountain', 'waterfall', 'lake', 'river',
+      'national_park', 'gardens_and_parks', 'geological_formation',
+      'pools', 'island', 'forests', 'nature_reserves'], 'Nature'),
+    # Culture
+    (['temple', 'mosque', 'church', 'synagogue', 'religion',
+      'museum', 'theatre', 'art_gallery', 'cultural', 'opera',
+      'libraries'], 'Culture'),
+    # Heritage
+    (['historic', 'monument', 'castle', 'fort', 'archaeological',
+      'memorial', 'ruins', 'palace', 'heritage', 'old_city'], 'Heritage'),
+    # Adventure
+    (['sport', 'climbing', 'diving', 'surfing', 'ski',
+      'amusement', 'theme_park', 'zoo', 'aquarium',
+      'adventure'], 'Adventure'),
+    # Attraction (catch-all for valid tourist POIs)
+]
 
 INTEREST_TO_KINDS = {
     'adventure': 'sport',
@@ -72,13 +133,69 @@ INTEREST_TO_KINDS = {
     'photography': 'natural,architecture,cultural',
 }
 
-CATEGORY_FALLBACK_IMAGES = {
-    'nature': [],
-    'adventure': [],
-    'culture': [],
-    'food': [],
-    'leisure': [],
-}
+# Maximum distance (km) from trip centre for a place to be valid
+MAX_DISTANCE_KM = 30
+
+
+# ────────────────────────────────────────────────────────────────
+# HELPERS
+# ────────────────────────────────────────────────────────────────
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return the great-circle distance in km between two points."""
+    R = 6371  # Earth radius in km
+    d_lat = math.radians(lat2 - lat1)
+    d_lon = math.radians(lon2 - lon1)
+    a = (math.sin(d_lat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+         * math.sin(d_lon / 2) ** 2)
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _classify_category(kinds_str: str) -> str:
+    """Deterministic category from OpenTripMap kinds string."""
+    k = kinds_str.lower()
+    for keywords, category in CATEGORY_RULES:
+        if any(kw in k for kw in keywords):
+            return category
+    return 'Attraction'
+
+
+def _is_valid_name(name: str) -> bool:
+    """Return True only for real, meaningful place names."""
+    if not name or len(name.strip()) < 3:
+        return False
+    return name.strip().lower() not in REJECTED_NAMES
+
+
+def _has_allowed_kinds(kinds_str: str) -> bool:
+    """Return True if the place has at least one whitelisted kind."""
+    if not kinds_str:
+        return False
+    parts = {p.strip().lower() for p in kinds_str.split(',')}
+    return bool(parts & ALLOWED_OTM_KINDS)
+
+
+def _quality_score(place: Dict, has_image: bool) -> float:
+    """Score a place for ranking.  Higher = better."""
+    score = 0.0
+    # OpenTripMap rate field (0-3 popularity) — may come back as a string
+    try:
+        score += int(place.get('rate', 0) or 0) * 10
+    except (ValueError, TypeError):
+        pass
+    # Has Wikipedia → high quality signal
+    if place.get('wikipedia') or place.get('wikipedia_extracts'):
+        score += 20
+    # Has an image already (OTM or Unsplash)
+    if has_image:
+        score += 15
+    # Has a description
+    if place.get('description') or place.get('wikipedia_extracts'):
+        score += 10
+    # Penalise missing name (shouldn't happen after filter, but safe)
+    if not place.get('name'):
+        score -= 50
+    return score
 
 
 class TripRecommender:
@@ -94,11 +211,7 @@ class TripRecommender:
         """
         Ensure trip has coordinates. Geocode if missing and save to DB.
         Uses fallback coordinates for known cities if geocoding fails.
-        
-        Returns:
-            True if coordinates available, False otherwise
         """
-        # DEBUG: Log trip info
         print(f"[DEBUG] Trip ID: {self.trip.id}")
         print(f"[DEBUG] Trip City: {self.trip.city}")
         print(f"[DEBUG] Trip Country: {self.trip.country}")
@@ -108,39 +221,31 @@ class TripRecommender:
             print(f"[DEBUG] Using existing coordinates: ({self.trip.latitude}, {self.trip.longitude})")
             return True
         
-        # Try geocoding first
         lat, lon = geocode_location(
             city=self.trip.city,
             region=self.trip.region,
             country=self.trip.country
         )
         
-        # FALLBACK: Use known city coordinates if geocoding fails
         if lat is None or lon is None:
             city_lower = (self.trip.city or '').lower().strip()
             print(f"[DEBUG] Geocoding failed, checking fallback for: '{city_lower}'")
             
             if city_lower in KNOWN_CITY_COORDINATES:
                 lat, lon = KNOWN_CITY_COORDINATES[city_lower]
-                print(f"[DEBUG] Using fallback coordinates for {city_lower}: ({lat}, {lon})")
             else:
-                # Try partial match
                 for known_city, coords in KNOWN_CITY_COORDINATES.items():
                     if known_city in city_lower or city_lower in known_city:
                         lat, lon = coords
-                        print(f"[DEBUG] Using partial match fallback for {known_city}: ({lat}, {lon})")
                         break
         
         if lat is None or lon is None:
             logger.warning(f"Could not geocode trip {self.trip.id}: {self.trip.city}, {self.trip.country}")
-            print(f"[DEBUG] FAILED to get coordinates for: {self.trip.city}")
             return False
         
         self.trip.latitude = lat
         self.trip.longitude = lon
         self.trip.save(update_fields=['latitude', 'longitude'])
-        logger.info(f"Saved coordinates for trip {self.trip.id}: ({lat}, {lon})")
-        print(f"[DEBUG] Saved coordinates: ({lat}, {lon})")
         return True
     
     def _load_members_data(self) -> None:
@@ -174,10 +279,8 @@ class TripRecommender:
         all_interests = []
         for member in self.members_data:
             all_interests.extend(member.get('interests', []))
-        
         if not all_interests:
             return []
-        
         interest_counts = Counter(all_interests)
         return [interest for interest, _ in interest_counts.most_common()]
     
@@ -185,135 +288,129 @@ class TripRecommender:
         """Map user interests to OpenTripMap kinds."""
         if not interests:
             return None
-        
         kinds_set = set()
         for interest in interests[:5]:
             interest_lower = interest.lower()
             if interest_lower in INTEREST_TO_KINDS:
                 kinds_set.update(INTEREST_TO_KINDS[interest_lower].split(','))
-        
         if not kinds_set:
             return None
-        
         return ','.join(list(kinds_set)[:8])
-    
-    def _categorize_place(self, kinds_str: str) -> str:
-        """Categorize a place based on its kinds."""
-        kinds_lower = kinds_str.lower()
-        
-        if any(k in kinds_lower for k in ['natural', 'beach', 'mountain', 'park']):
-            return 'nature'
-        if any(k in kinds_lower for k in ['sport', 'climbing', 'diving']):
-            return 'adventure'
-        if any(k in kinds_lower for k in ['cultural', 'historic', 'museum', 'architecture']):
-            return 'culture'
-        if any(k in kinds_lower for k in ['food', 'restaurant', 'cafe']):
-            return 'food'
-        
-        return 'culture'
-    
+
+    # ────────────────────────────────────────────────
+    # FILTERING  &  DEDUP  PIPELINE
+    # ────────────────────────────────────────────────
+    def _filter_places(self, places: List[Dict]) -> List[Dict]:
+        """Apply strict name + kind + distance filters and deduplicate."""
+        trip_lat = self.trip.latitude
+        trip_lon = self.trip.longitude
+        filtered: List[Dict] = []
+        seen_names: Dict[str, bool] = {}       # lowercase name → True
+        seen_coords: List[tuple] = []           # (lat, lon) of accepted places
+
+        for p in places:
+            name = (p.get('name') or '').strip()
+
+            # 1. Name validity
+            if not _is_valid_name(name):
+                continue
+
+            # 2. Kinds whitelist
+            if not _has_allowed_kinds(p.get('kinds', '')):
+                continue
+
+            # 3. Distance check
+            point = p.get('point', {})
+            p_lat = point.get('lat') or p.get('lat')
+            p_lon = point.get('lon') or p.get('lon')
+            if p_lat and p_lon and trip_lat and trip_lon:
+                dist = _haversine_km(trip_lat, trip_lon, p_lat, p_lon)
+                if dist > MAX_DISTANCE_KM:
+                    continue
+            
+            # 4. Deduplicate by name (case-insensitive)
+            name_key = name.lower()
+            if name_key in seen_names:
+                continue
+
+            # 5. Deduplicate by proximity (< 200 m apart)
+            if p_lat and p_lon:
+                too_close = False
+                for (sl, sn) in seen_coords:
+                    if _haversine_km(sl, sn, p_lat, p_lon) < 0.2:
+                        too_close = True
+                        break
+                if too_close:
+                    continue
+                seen_coords.append((p_lat, p_lon))
+
+            seen_names[name_key] = True
+            filtered.append(p)
+
+        print(f"[FILTER] {len(places)} raw → {len(filtered)} after strict filter + dedup")
+        return filtered
+
+    # ────────────────────────────────────────────────
+    # FORMAT  &  IMAGE RESOLUTION
+    # ────────────────────────────────────────────────
     def _format_place(self, place: Dict, details: Optional[Dict] = None) -> Dict[str, Any]:
-        """Format a place into the expected response format with intelligent image resolution."""
+        """Format a place into the clean output format with image resolution."""
         merged = {**place}
         if details:
             merged.update(details)
         
-        # Extract place information - try multiple sources for name
-        place_name = merged.get('name', '')
-        
-        # If no name, try to generate one from kinds
-        if not place_name:
-            kinds = merged.get('kinds', '')
-            if kinds:
-                # Generate a readable name from kinds (e.g., "stadiums" -> "Stadium")
-                kind_parts = kinds.split(',')
-                for part in kind_parts:
-                    part = part.strip()
-                    if part and part not in ['sport', 'other']:
-                        place_name = part.replace('_', ' ').title()
-                        print(f"[DEBUG] Generated name from kinds: {place_name}")
-                        break
-        
-        # If still no name, use location-based name
-        if not place_name:
-            place_name = f"Place near {self.trip.city}"
-            print(f"[DEBUG] Using default name: {place_name}")
-        
+        place_name = (merged.get('name') or '').strip()
         city = self.trip.city or ''
         country = self.trip.country or ''
         
-        print(f"[DEBUG] _format_place: name='{place_name}', xid={merged.get('xid', 'N/A')}")
+        # Deterministic category
+        category = _classify_category(merged.get('kinds', ''))
         
-        # Determine category
-        category = self._categorize_place(merged.get('kinds', ''))
-        
-        # Initialize image and source
+        # ── Image resolution ──
         image = None
         image_source = 'fallback'
         
-        # STEP 1: Try OpenTripMap enriched image
+        # Step 1: OpenTripMap image
         if merged.get('image'):
             image = merged['image']
             image_source = 'opentripmap'
-            print(f"[DEBUG] Got OpenTripMap image: {image[:50]}...")
-        elif merged.get('preview'):
-            image = merged['preview'].get('source', '')
-            if image:
-                image_source = 'opentripmap'
-                print(f"[DEBUG] Got OpenTripMap preview: {image[:50]}...")
+        elif merged.get('preview') and merged['preview'].get('source'):
+            image = merged['preview']['source']
+            image_source = 'opentripmap'
         
-        # STEP 2: If no OpenTripMap image, use Unsplash with intelligent fallback
+        # Step 2: Unsplash — "<place> <city> travel"
         if not image:
-            print(f"[DEBUG] No OTM image, trying Unsplash for '{place_name}'...")
             try:
                 image, image_source = unsplash_service.get_place_image_with_fallback(
                     place_name=place_name,
                     city=city,
                     country=country,
-                    category=category
+                    category=category.lower()
                 )
-                if image:
-                    print(f"[DEBUG] Got Unsplash image: {image[:50]}... (source={image_source})")
-                else:
-                    print(f"[DEBUG] Unsplash returned no image")
             except Exception as e:
-                print(f"[DEBUG] Unsplash error: {str(e)}")
+                logger.warning(f"Unsplash error for {place_name}: {e}")
         
-        # STEP 3: Final safety fallback (should rarely happen now)
+        # Step 3: empty string (frontend renders gradient placeholder)
         if not image:
-            print(f"[DEBUG] Using fallback image for category: {category}")
-            fallback_images = CATEGORY_FALLBACK_IMAGES.get(category, CATEGORY_FALLBACK_IMAGES.get('culture', []))
-            if isinstance(fallback_images, list) and len(fallback_images) > 0:
-                # Rotate images based on place name for variety
-                hash_obj = hashlib.md5(place_name.encode())
-                index = int(hash_obj.hexdigest(), 16) % len(fallback_images)
-                image = fallback_images[index]
-            elif isinstance(fallback_images, str) and fallback_images:
-                image = fallback_images
-            else:
-                image = ''  # No fallback images configured - no hardcoded images policy
+            image = ''
             image_source = 'fallback'
-            if image:
-                print(f"[DEBUG] Fallback image: {image[:50]}...")
-            else:
-                print(f"[DEBUG] No fallback image available for category: {category}")
         
-        # Extract description
+        # Description
         description = merged.get('description', '')
         if not description and merged.get('wikipedia_extracts'):
             description = merged['wikipedia_extracts'].get('text', '')[:300]
         
-        # Extract coordinates
+        # Coordinates
         point = merged.get('point', {})
         lat = point.get('lat') or merged.get('lat', 0)
         lon = point.get('lon') or merged.get('lon', 0)
         
         return {
             'xid': merged.get('xid', ''),
-            'name': place_name or 'Unknown Place',
+            'name': place_name,
             'city': city,
             'image': image,
-            'image_source': image_source,  # Track where image came from
+            'image_source': image_source,
             'short_description': description,
             'category': category,
             'lat': lat,
@@ -322,114 +419,102 @@ class TripRecommender:
             'wikipedia': merged.get('wikipedia', ''),
             'address': merged.get('address', {}),
         }
-    
+
+    # ────────────────────────────────────────────────
+    # MAIN  RECOMMEND  PIPELINE
+    # ────────────────────────────────────────────────
     def recommend(
         self,
-        radius: int = 50000,  # Search radius 50km
-        limit: int = 30
+        radius: int = 30000,   # 30 km default
+        limit: int = 12        # return top 12
     ) -> List[Dict[str, Any]]:
         """
-        Generate destination recommendations for the trip location.
-        
-        Fetches interesting places near the trip destination using group
-        members' interests to determine what kinds of places to search for.
-        
-        Args:
-            radius: Search radius in meters (default 50km)
-            limit: Maximum number of results
-            
-        Returns:
-            List of recommendation dictionaries
+        Generate high-quality destination recommendations.
+
+        Pipeline:
+        1. Resolve coordinates
+        2. Fetch raw POIs (with interest-based kinds where available)
+        3. Strict filter + dedup
+        4. Enrich top candidates with details (parallel)
+        5. Format → score → sort → take top *limit*
         """
-        print(f"[DEBUG] recommend() called - radius={radius}, limit={limit}")
+        print(f"[RECOMMEND] trip={self.trip.id}, city={self.trip.city}, radius={radius}, limit={limit}")
         
         if not self._ensure_coordinates():
-            print("[DEBUG] _ensure_coordinates() returned False - no coordinates available")
             return []
         
-        print(f"[DEBUG] Trip coordinates: ({self.trip.latitude}, {self.trip.longitude})")
-        
         self._load_members_data()
-        
-        # Use group interests to find relevant place types
         interests = self._get_dominant_interests()
         kinds = self._map_interests_to_kinds(interests)
-        logger.info(f"Trip {self.trip.id} interests: {interests}, kinds: {kinds}")
+        print(f"[RECOMMEND] interests={interests}, otm_kinds={kinds}")
         
-        print(f"[DEBUG] Searching with kinds={kinds}")
-        
-        # Try OpenTripMap first with kinds filter
+        # ── Fetch raw places ──
         places = opentripmap_service.get_places_by_radius(
             lat=self.trip.latitude,
             lon=self.trip.longitude,
             kinds=kinds,
             radius=radius,
-            limit=limit * 2
+            limit=100   # fetch more so filtering has room
         )
-        print(f"[DEBUG] OpenTripMap with kinds returned {len(places) if places else 0} places")
+        print(f"[RECOMMEND] OTM (with kinds) → {len(places) if places else 0}")
         
-        # FALLBACK 1: Try without kinds filter (get any interesting places)
-        if not places:
-            print("[DEBUG] Trying OpenTripMap without kinds filter...")
-            places = opentripmap_service.get_places_by_radius(
+        # Fallback: broader search without kinds filter
+        if not places or len(places) < limit:
+            broad = opentripmap_service.get_places_by_radius(
                 lat=self.trip.latitude,
                 lon=self.trip.longitude,
-                kinds=None,  # No filter - get any POIs
+                kinds=None,
                 radius=radius,
-                limit=limit * 2
+                limit=100
             )
-            print(f"[DEBUG] OpenTripMap without kinds returned {len(places) if places else 0} places")
-        
-        # FALLBACK 2: Try Overpass API if OpenTripMap returns nothing
-        if not places:
-            print("[DEBUG] Trying Overpass API...")
-            places = opentripmap_service.get_places_from_overpass(
-                lat=self.trip.latitude,
-                lon=self.trip.longitude,
-                radius=radius,
-                limit=limit * 2
-            )
-            print(f"[DEBUG] Overpass API returned {len(places) if places else 0} places")
+            if broad:
+                existing_xids = {p['xid'] for p in (places or [])}
+                for p in broad:
+                    if p.get('xid') and p['xid'] not in existing_xids:
+                        (places or []).append(p)
+                        existing_xids.add(p['xid'])
+            if not places:
+                places = broad or []
+            print(f"[RECOMMEND] After broad search: {len(places)} total raw")
         
         if not places:
-            print("[DEBUG] All APIs returned no places - returning empty list")
             return []
         
-        # Enrich places with details (images and descriptions) for first 12 results
-        print(f"[DEBUG] Enriching {len(places)} places with details...")
-        enriched_places = opentripmap_service.get_places_with_details(
-            places=places,
-            max_details=12
+        # ── Strict filter + dedup ──
+        filtered = self._filter_places(places)
+        if not filtered:
+            print("[RECOMMEND] All places rejected by filter — returning empty")
+            return []
+        
+        # ── Enrich top candidates with details ──
+        # Request more than *limit* so scoring can pick the best
+        enrich_count = min(len(filtered), limit * 3)
+        enriched = opentripmap_service.get_places_with_details(
+            places=filtered[:enrich_count],
+            max_details=min(enrich_count, 20)
         )
-        print(f"[DEBUG] After enrichment: {len(enriched_places)} places")
         
-        recommendations = []
-        seen_xids = set()
-        
-        for place in enriched_places:
-            if len(recommendations) >= limit:
-                break
-            
-            xid = place.get('xid')
-            if not xid or xid in seen_xids:
+        # ── Format, score, sort ──
+        scored: List[tuple] = []   # (score, formatted_dict)
+        for place in enriched:
+            details = place.get('details')
+            # Re-check name after enrichment (details may override)
+            merged_name = (details or {}).get('name') or place.get('name', '')
+            if not _is_valid_name(merged_name):
                 continue
             
-            seen_xids.add(xid)
-            
-            # Use enriched data (includes image and description)
-            details = place.get('details')
             formatted = self._format_place(place, details)
-            
-            # Skip category filtering for now - return all results
-            # if category and category != 'all':
-            #     if formatted['category'] != category:
-            #         continue
-            
-            recommendations.append(formatted)
+            has_image = bool(formatted['image'])
+            score = _quality_score({**place, **(details or {})}, has_image)
+            scored.append((score, formatted))
         
-        print(f"[DEBUG] Final recommendations count: {len(recommendations)}")
+        scored.sort(key=lambda x: x[0], reverse=True)
+        recommendations = [item for _, item in scored[:limit]]
+        
+        print(f"[RECOMMEND] Returning {len(recommendations)} high-quality destinations")
         if recommendations:
-            print(f"[DEBUG] First recommendation: {recommendations[0].get('name', 'unknown')}")
+            for i, r in enumerate(recommendations[:3]):
+                print(f"  #{i+1} {r['name']} ({r['category']}) score={scored[i][0]}")
         
         return recommendations
     
@@ -456,31 +541,14 @@ class TripRecommender:
 
 def recommend_for_trip(
     trip: Trip,
-    limit: int = 30
+    limit: int = 12
 ) -> List[Dict[str, Any]]:
-    """
-    Convenience function to get recommendations for a trip.
-    
-    Args:
-        trip: Trip model instance
-        limit: Maximum number of results
-        
-    Returns:
-        List of recommendation dictionaries
-    """
+    """Convenience function to get recommendations for a trip."""
     recommender = TripRecommender(trip)
     return recommender.recommend(limit=limit)
 
 
 def get_group_analysis(trip: Trip) -> Dict[str, Any]:
-    """
-    Convenience function to get group analysis for a trip.
-    
-    Args:
-        trip: Trip model instance
-        
-    Returns:
-        Dictionary with group preference analysis
-    """
+    """Convenience function to get group analysis for a trip."""
     recommender = TripRecommender(trip)
     return recommender.get_group_analysis()

@@ -18,11 +18,8 @@ class TripImageSerializer(serializers.ModelSerializer):
         fields = ('id', 'url', 'caption', 'position', 'uploaded_at')
 
     def get_url(self, obj):
-        request = self.context.get('request')
-        if obj.image and request:
-            return request.build_absolute_uri(obj.image.url)
-        elif obj.image:
-            return obj.image.url
+        if obj.image_data:
+            return f"data:{obj.content_type};base64,{obj.image_data}"
         return None
 
 

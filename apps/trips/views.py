@@ -82,10 +82,19 @@ class TripListCreateAPIView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         trip = serializer.save()
 
-        # Handle image uploads (up to 6)
+        # Handle image uploads (up to 6) — store as base64 in the database
+        import base64
         images = request.FILES.getlist('images')
         for idx, img_file in enumerate(images[:6]):
-            TripImage.objects.create(trip=trip, image=img_file, position=idx)
+            raw = img_file.read()
+            encoded = base64.b64encode(raw).decode('utf-8')
+            content_type = img_file.content_type or 'image/jpeg'
+            TripImage.objects.create(
+                trip=trip,
+                image_data=encoded,
+                content_type=content_type,
+                position=idx,
+            )
 
         # Attempt geocoding if coordinates not provided
         geocode_trip_location(trip)

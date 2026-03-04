@@ -20,6 +20,8 @@ from .serializers import (
     UserSerializer,
     GoogleAuthSerializer,
     ProfileUpdateSerializer,
+    ChangePasswordSerializer,
+    UpdateEmailSerializer,
 )
 
 User = get_user_model()
@@ -156,6 +158,59 @@ class ProfileUpdateView(generics.UpdateAPIView):
         return Response(
             UserSerializer(user, context={'request': request}).data,
             status=status.HTTP_200_OK
+        )
+
+
+class ChangePasswordView(APIView):
+    """
+    POST /api/auth/change-password/
+
+    Change the authenticated user's password.
+    Fields: current_password, new_password, confirm_password
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        if not user.check_password(serializer.validated_data['current_password']):
+            return Response(
+                {'current_password': 'Incorrect password.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(serializer.validated_data['new_password'])
+        user.save(update_fields=['password'])
+        return Response({'message': 'Password changed successfully.'}, status=status.HTTP_200_OK)
+
+
+class UpdateEmailView(APIView):
+    """
+    POST /api/auth/update-email/
+
+    Change the authenticated user's email.
+    Fields: new_email, current_password
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = UpdateEmailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        if not user.check_password(serializer.validated_data['current_password']):
+            return Response(
+                {'current_password': 'Incorrect password.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.email = serializer.validated_data['new_email']
+        user.save(update_fields=['email'])
+        return Response(
+            UserSerializer(user, context={'request': request}).data,
+            status=status.HTTP_200_OK,
         )
 
 

@@ -180,14 +180,14 @@ class UserSerializer(serializers.ModelSerializer):
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     """
-    Serializer for updating user profile: bio and profile picture.
+    Serializer for updating user profile: full_name, bio and profile picture.
     Supports removing the profile picture by passing remove_picture=true.
     """
     remove_picture = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = User
-        fields = ['bio', 'profile_picture', 'remove_picture']
+        fields = ['full_name', 'bio', 'profile_picture', 'remove_picture']
 
     def update(self, instance, validated_data):
         remove_picture = validated_data.pop('remove_picture', False)
@@ -195,6 +195,8 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             if instance.profile_picture:
                 instance.profile_picture.delete(save=False)
             instance.profile_picture = None
+        if 'full_name' in validated_data:
+            instance.full_name = validated_data['full_name']
         bio = validated_data.get('bio', None)
         if bio is not None:
             instance.bio = bio
@@ -204,6 +206,40 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             instance.profile_picture = validated_data['profile_picture']
         instance.save()
         return instance
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """
+    Validate and apply a password change.
+    Requires the current password for security.
+    """
+    current_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(
+        required=True, write_only=True, validators=[validate_password]
+    )
+    confirm_password = serializers.CharField(required=True, write_only=True)
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError(
+                {'confirm_password': 'Passwords do not match.'}
+            )
+        return attrs
+
+
+class UpdateEmailSerializer(serializers.Serializer):
+    """
+    Validate and apply an email change.
+    Requires the current password for security.
+    """
+    new_email = serializers.EmailField(required=True)
+    current_password = serializers.CharField(required=True, write_only=True)
+
+    def validate_new_email(self, value):
+        email = value.lower()
+        if User.objects.filter(email=email).exists():
+            raise serializers.ValidationError('This email is already in use.')
+        return email
 
 
 class GoogleAuthSerializer(serializers.Serializer):

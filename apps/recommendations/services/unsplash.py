@@ -33,77 +33,16 @@ CATEGORY_KEYWORDS = {
 }
 
 # Curated high-quality fallback images per category
-# Using varied Unsplash photos to ensure diversity
-CATEGORY_FALLBACK_IMAGES = {
-    'nature': [
-        'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',  # Mountains
-        'https://images.unsplash.com/photo-1511593358241-7eea1f3c84e5?w=800',  # Waterfall
-        'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800',  # Forest
-        'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800',  # Nature trail
-        'https://images.unsplash.com/photo-1426604966848-d7adac402bff?w=800',  # Lake
-        'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=800',  # Valley
-        'https://images.unsplash.com/photo-1501854140801-50d01698950b?w=800',  # Hills
-        'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=800',  # Sunlight forest
-    ],
-    'adventure': [
-        'https://images.unsplash.com/photo-1551632811-561732d1e306?w=800',  # Rock climbing
-        'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=800',  # Hiking
-        'https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5?w=800',  # Mountains
-        'https://images.unsplash.com/photo-1501555088652-021faa106b9b?w=800',  # Adventure
-        'https://images.unsplash.com/photo-1527004013197-933c4bb611b3?w=800',  # Exploration
-        'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800',  # Mountain peak
-    ],
-    'culture': [
-        'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800',  # Historic building
-        'https://images.unsplash.com/photo-1533929736458-ca588d08c8be?w=800',  # Museum
-        'https://images.unsplash.com/photo-1555400038-63f5ba517a47?w=800',  # Temple
-        'https://images.unsplash.com/photo-1558525148-544f74d6678f?w=800',  # Architecture
-        'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=800',  # Taj Mahal
-        'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=800',  # Ancient ruins
-        'https://images.unsplash.com/photo-1531572753322-ad063cecc140?w=800',  # Church
-        'https://images.unsplash.com/photo-1548013146-72479768bada?w=800',  # Indian monument
-        'https://images.unsplash.com/photo-1599661046827-dacff0c0f09a?w=800',  # Statue
-        'https://images.unsplash.com/photo-1564507592333-c60657eea523?w=800',  # Tower
-    ],
-    'religion': [
-        'https://images.unsplash.com/photo-1555400038-63f5ba517a47?w=800',  # Temple
-        'https://images.unsplash.com/photo-1531572753322-ad063cecc140?w=800',  # Church
-        'https://images.unsplash.com/photo-1548013146-72479768bada?w=800',  # Monument
-        'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=800',  # Taj Mahal
-        'https://images.unsplash.com/photo-1600093463592-8e36ae95ef56?w=800',  # Mosque
-        'https://images.unsplash.com/photo-1582657233895-0f37a3f150c0?w=800',  # Hindu temple
-    ],
-    'food': [
-        'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',  # Food platter
-        'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',  # Restaurant
-        'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800',  # Pizza
-        'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',  # Salad
-        'https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=800',  # Pancakes
-        'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800',  # Bowl
-    ],
-    'gastronomy': [
-        'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',
-        'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',
-        'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800',  # Fine dining
-        'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800',  # Restaurant interior
-    ],
-    'leisure': [
-        'https://images.unsplash.com/photo-1540541338287-41700207dee6?w=800',  # Beach leisure
-        'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800',  # Tropical beach
-        'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800',  # Pool
-        'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=800',  # Beach sunset
-        'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800',  # Resort pool
-    ],
-    'all': [
-        'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800',  # Nature
-        'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800',  # City
-        'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800',  # Beach
-        'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=800',  # Monument
-        'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',  # Mountains
-        'https://images.unsplash.com/photo-1533929736458-ca588d08c8be?w=800',  # Cultural
-        'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=800',  # Adventure
-        'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',  # Food
-    ],
+# Removed hardcoded URLs — Unsplash API or empty fallback is used instead
+CATEGORY_FALLBACK_IMAGES: dict[str, list[str]] = {
+    'nature': [],
+    'adventure': [],
+    'culture': [],
+    'religion': [],
+    'food': [],
+    'gastronomy': [],
+    'leisure': [],
+    'all': [],
 }
 
 
@@ -236,14 +175,17 @@ class UnsplashService:
             logger.warning("⚠ Unsplash API disabled - using category fallback immediately")
             
             # Use curated fallback with rotation
-            fallback_images = CATEGORY_FALLBACK_IMAGES.get(category, CATEGORY_FALLBACK_IMAGES['culture'])
-            if isinstance(fallback_images, list):
+            fallback_images = CATEGORY_FALLBACK_IMAGES.get(category, CATEGORY_FALLBACK_IMAGES.get('culture', []))
+            if isinstance(fallback_images, list) and len(fallback_images) > 0:
                 hash_str = f"{place_name}_{city}_{country}".lower()
                 hash_obj = hashlib.md5(hash_str.encode())
                 index = int(hash_obj.hexdigest(), 16) % len(fallback_images)
                 fallback_url = fallback_images[index]
-            else:
+            elif isinstance(fallback_images, str) and fallback_images:
                 fallback_url = fallback_images
+            else:
+                # No fallback images configured - return empty
+                return '', 'fallback'
             
             return fallback_url, 'fallback'
         
@@ -304,7 +246,7 @@ class UnsplashService:
         logger.info(f"⚠ Using curated fallback for: {place_name}")
         
         # Get category fallback images and rotate through them based on place name
-        fallback_images = CATEGORY_FALLBACK_IMAGES.get(category, CATEGORY_FALLBACK_IMAGES['culture'])
+        fallback_images = CATEGORY_FALLBACK_IMAGES.get(category, CATEGORY_FALLBACK_IMAGES.get('culture', []))
         if isinstance(fallback_images, list) and len(fallback_images) > 0:
             # Use hash of place name to consistently select different images for different places
             hash_str = f"{place_name}_{city}_{country}".lower()
@@ -312,8 +254,12 @@ class UnsplashService:
             index = int(hash_obj.hexdigest(), 16) % len(fallback_images)
             fallback_url = fallback_images[index]
             print(f"[DEBUG] Fallback image index {index} for: {place_name}")
+        elif isinstance(fallback_images, str) and fallback_images:
+            fallback_url = fallback_images
         else:
-            fallback_url = fallback_images if isinstance(fallback_images, str) else CATEGORY_FALLBACK_IMAGES['culture'][0]
+            # No fallback images configured - return empty (no hardcoded images policy)
+            print(f"[DEBUG] No fallback image available for category: {category}")
+            return '', 'fallback'
         
         return fallback_url, 'fallback'
 

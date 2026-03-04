@@ -20,7 +20,7 @@ from .unsplash import unsplash_service
 logger = logging.getLogger(__name__)
 
 # Default fallback image for destinations without images
-DEFAULT_DESTINATION_IMAGE = 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800'
+DEFAULT_DESTINATION_IMAGE = ''
 
 # Known city coordinates for fallback when geocoding fails
 KNOWN_CITY_COORDINATES = {
@@ -50,14 +50,6 @@ KNOWN_CITY_COORDINATES = {
 }
 
 
-CATEGORY_TO_KINDS = {
-    'nature': 'natural',
-    'adventure': 'sport',
-    'culture': 'cultural,historic',
-    'gastronomy': 'foods',
-    'all': None,
-}
-
 INTEREST_TO_KINDS = {
     'adventure': 'sport',
     'hiking': 'natural,sport',
@@ -81,27 +73,11 @@ INTEREST_TO_KINDS = {
 }
 
 CATEGORY_FALLBACK_IMAGES = {
-    'nature': [
-        'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',
-        'https://images.unsplash.com/photo-1511593358241-7eea1f3c84e5?w=800',
-        'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800',
-    ],
-    'adventure': [
-        'https://images.unsplash.com/photo-1551632811-561732d1e306?w=800',
-        'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=800',
-    ],
-    'culture': [
-        'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800',
-        'https://images.unsplash.com/photo-1533929736458-ca588d08c8be?w=800',
-    ],
-    'food': [
-        'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',
-        'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',
-    ],
-    'leisure': [
-        'https://images.unsplash.com/photo-1540541338287-41700207dee6?w=800',
-        'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800',
-    ],
+    'nature': [],
+    'adventure': [],
+    'culture': [],
+    'food': [],
+    'leisure': [],
 }
 
 
@@ -306,16 +282,21 @@ class TripRecommender:
         # STEP 3: Final safety fallback (should rarely happen now)
         if not image:
             print(f"[DEBUG] Using fallback image for category: {category}")
-            fallback_images = CATEGORY_FALLBACK_IMAGES.get(category, CATEGORY_FALLBACK_IMAGES['culture'])
-            if isinstance(fallback_images, list):
+            fallback_images = CATEGORY_FALLBACK_IMAGES.get(category, CATEGORY_FALLBACK_IMAGES.get('culture', []))
+            if isinstance(fallback_images, list) and len(fallback_images) > 0:
                 # Rotate images based on place name for variety
                 hash_obj = hashlib.md5(place_name.encode())
                 index = int(hash_obj.hexdigest(), 16) % len(fallback_images)
                 image = fallback_images[index]
-            else:
+            elif isinstance(fallback_images, str) and fallback_images:
                 image = fallback_images
+            else:
+                image = ''  # No fallback images configured - no hardcoded images policy
             image_source = 'fallback'
-            print(f"[DEBUG] Fallback image: {image[:50]}...")
+            if image:
+                print(f"[DEBUG] Fallback image: {image[:50]}...")
+            else:
+                print(f"[DEBUG] No fallback image available for category: {category}")
         
         # Extract description
         description = merged.get('description', '')
@@ -344,22 +325,23 @@ class TripRecommender:
     
     def recommend(
         self,
-        category: Optional[str] = None,
-        radius: int = 50000,  # Increased default radius to 50km
+        radius: int = 50000,  # Search radius 50km
         limit: int = 30
     ) -> List[Dict[str, Any]]:
         """
-        Generate recommendations for the trip.
+        Generate destination recommendations for the trip location.
+        
+        Fetches interesting places near the trip destination using group
+        members' interests to determine what kinds of places to search for.
         
         Args:
-            category: Optional category filter ('nature', 'adventure', 'culture', 'gastronomy')
             radius: Search radius in meters (default 50km)
             limit: Maximum number of results
             
         Returns:
             List of recommendation dictionaries
         """
-        print(f"[DEBUG] recommend() called - category={category}, radius={radius}, limit={limit}")
+        print(f"[DEBUG] recommend() called - radius={radius}, limit={limit}")
         
         if not self._ensure_coordinates():
             print("[DEBUG] _ensure_coordinates() returned False - no coordinates available")
@@ -369,12 +351,10 @@ class TripRecommender:
         
         self._load_members_data()
         
-        if category and category in CATEGORY_TO_KINDS:
-            kinds = CATEGORY_TO_KINDS[category]
-        else:
-            interests = self._get_dominant_interests()
-            kinds = self._map_interests_to_kinds(interests)
-            logger.info(f"Trip {self.trip.id} interests: {interests}, kinds: {kinds}")
+        # Use group interests to find relevant place types
+        interests = self._get_dominant_interests()
+        kinds = self._map_interests_to_kinds(interests)
+        logger.info(f"Trip {self.trip.id} interests: {interests}, kinds: {kinds}")
         
         print(f"[DEBUG] Searching with kinds={kinds}")
         
@@ -476,7 +456,6 @@ class TripRecommender:
 
 def recommend_for_trip(
     trip: Trip,
-    category: Optional[str] = None,
     limit: int = 30
 ) -> List[Dict[str, Any]]:
     """
@@ -484,14 +463,13 @@ def recommend_for_trip(
     
     Args:
         trip: Trip model instance
-        category: Optional category filter
         limit: Maximum number of results
         
     Returns:
         List of recommendation dictionaries
     """
     recommender = TripRecommender(trip)
-    return recommender.recommend(category=category, limit=limit)
+    return recommender.recommend(limit=limit)
 
 
 def get_group_analysis(trip: Trip) -> Dict[str, Any]:

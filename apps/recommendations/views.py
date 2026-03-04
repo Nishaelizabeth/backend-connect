@@ -40,22 +40,15 @@ class TripRecommendationsView(APIView):
         trip = get_object_or_404(Trip, id=trip_id)
         print(f"[DEBUG] GET recommendations for trip {trip_id}: {trip.title}, city={trip.city}")
         
-        # Get query parameters
-        category = request.query_params.get('category', 'all')
-        if category == 'all':
-            category = None
-        
         try:
             limit = int(request.query_params.get('limit', 30))
             limit = min(max(limit, 1), 100)
         except ValueError:
             limit = 30
         
-        print(f"[DEBUG] Query params: category={category}, limit={limit}")
-        
         # Use cached recommendations with background generation
         try:
-            result = get_or_generate_recommendations(trip_id, category)
+            result = get_or_generate_recommendations(trip_id)
             print(f"[DEBUG] get_or_generate_recommendations returned: status={result.get('status')}, count={len(result.get('recommendations', []))}")
         except Exception as e:
             # FAIL-SAFE: Never crash, return empty data
@@ -82,7 +75,7 @@ class TripRecommendationsView(APIView):
         
         # If no cached results, try database fallback
         if not recommendations:
-            recommendations = self._get_database_fallback(trip, category, limit)
+            recommendations = self._get_database_fallback(trip, limit)
         
         # FAIL-SAFE: Always return valid JSON with empty array fallback
         try:
@@ -100,7 +93,7 @@ class TripRecommendationsView(APIView):
             'expires_at': result.get('expires_at'),
         }, status=status.HTTP_200_OK)
     
-    def _get_database_fallback(self, trip, category, limit):
+    def _get_database_fallback(self, trip, limit):
         """Fallback to database destinations if cache is empty."""
         city_name = trip.city or ''
         
@@ -114,9 +107,6 @@ class TripRecommendationsView(APIView):
         
         if location_filter:
             queryset = queryset.filter(location_filter)
-        
-        if category:
-            queryset = queryset.filter(category=category)
         
         queryset = queryset.distinct()[:limit]
         

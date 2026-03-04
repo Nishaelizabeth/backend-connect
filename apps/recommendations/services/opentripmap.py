@@ -7,6 +7,7 @@ Geocoding is handled separately by the geocoder service.
 
 import logging
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict, Any
 from django.conf import settings
 from django.core.cache import cache
@@ -174,92 +175,96 @@ class OpenTripMapService:
             cache.set(cache_key, {}, 60)
             return {}
     
+    def _enrich_single_place(self, index: int, place: Dict[str, Any]) -> tuple:
+        """
+        Fetch and enrich a single place with details.
+        Returns (index, enriched_place) tuple to allow ordered reassembly.
+        """
+        xid = place.get('xid', '')
+        original_name = place.get('name', '')
+
+        if not xid or xid.startswith('osm_'):
+            return index, {
+                **place,
+                'image': None,
+                'description': '',
+            }
+
+        details = self.get_place_details(xid)
+        image = None
+        description = ''
+        name = original_name
+
+        if details:
+            if not name and details.get('name'):
+                name = details['name']
+            if details.get('preview') and details['preview'].get('source'):
+                image = details['preview']['source']
+            elif details.get('image'):
+                image = details['image']
+            if details.get('wikipedia_extracts') and details['wikipedia_extracts'].get('text'):
+                description = details['wikipedia_extracts']['text']
+
+        return index, {
+            **place,
+            'name': name,
+            'image': image,
+            'description': description,
+            'details': details,
+        }
+
     def get_places_with_details(self, places: List[Dict[str, Any]], max_details: int = 12) -> List[Dict[str, Any]]:
         """
         Enrich a list of places with detailed information (images and descriptions).
-        
+        Detail fetches for the first `max_details` places are done in parallel.
+
         Args:
             places: List of basic place dictionaries from radius search
             max_details: Maximum number of places to enrich with details
-            
+
         Returns:
-            List of enriched place dictionaries
+            List of enriched place dictionaries (same order as input)
         """
         print(f"[DEBUG] get_places_with_details: Enriching {len(places)} places (max_details={max_details})")
-        enriched_places = []
-        
-        for i, place in enumerate(places):
-            xid = place.get('xid', '')
-            original_name = place.get('name', '')
-            
-            if i >= max_details:
-                # For remaining places, just add empty image/description
-                print(f"[DEBUG] Place {i} ({xid}): Skipping details (over max_details)")
-                enriched_places.append({
-                    **place,
-                    'image': None,
-                    'description': '',
-                })
-                continue
-            
-            if not xid or xid.startswith('osm_'):
-                # OSM results don't have detail endpoints
-                print(f"[DEBUG] Place {i} ({xid}): Skipping (OSM or no xid)")
-                enriched_places.append({
-                    **place,
-                    'image': None,
-                    'description': '',
-                })
-                continue
-            
-            # Fetch details for this place
-            print(f"[DEBUG] Place {i} ({xid}): Fetching details...")
-            logger.info(f"Fetching details for xid: {xid}")
-            details = self.get_place_details(xid)
-            
-            # Extract image, description, and name from details
-            image = None
-            description = ''
-            name = original_name  # Start with original name
-            
-            if details:
-                print(f"[DEBUG] Place {i} ({xid}): Got details, keys={list(details.keys())}")
-                
-                # Extract name from details if original is empty
-                if not name and details.get('name'):
-                    name = details['name']
-                    print(f"[DEBUG] Place {i} ({xid}): Got name from details: {name}")
-                
-                # Extract image
-                if details.get('preview') and details['preview'].get('source'):
-                    image = details['preview']['source']
-                    print(f"[DEBUG] Place {i} ({xid}): Found image: {image[:50]}...")
-                elif details.get('image'):
-                    image = details['image']
-                    print(f"[DEBUG] Place {i} ({xid}): Found direct image: {image[:50]}...")
-                else:
-                    print(f"[DEBUG] Place {i} ({xid}): No image in details")
-                
-                # Extract description
-                if details.get('wikipedia_extracts') and details['wikipedia_extracts'].get('text'):
-                    description = details['wikipedia_extracts']['text']
-                    print(f"[DEBUG] Place {i} ({xid}): Got description ({len(description)} chars)")
-            else:
-                print(f"[DEBUG] Place {i} ({xid}): No details returned!")
-                logger.warning(f"No details returned for xid: {xid}")
-            
+
+        # Split into places that need detail calls vs those that don't
+        detail_places = places[:max_details]
+        skip_places = places[max_details:]
+
+        # Fetch details for the first batch IN PARALLEL
+        results: Dict[int, Dict] = {}
+        with ThreadPoolExecutor(max_workers=min(max_details, 8)) as executor:
+            futures = {
+                executor.submit(self._enrich_single_place, i, place): i
+                for i, place in enumerate(detail_places)
+            }
+            for future in as_completed(futures):
+                try:
+                    idx, enriched = future.result()
+                    results[idx] = enriched
+                except Exception as e:
+                    orig_idx = futures[future]
+                    print(f"[DEBUG] Place {orig_idx}: parallel fetch error: {e}")
+                    results[orig_idx] = {
+                        **detail_places[orig_idx],
+                        'image': None,
+                        'description': '',
+                    }
+
+        # Reassemble in original order
+        enriched_places = [results[i] for i in range(len(detail_places))]
+
+        # Append skipped places (no detail call needed)
+        for place in skip_places:
             enriched_places.append({
                 **place,
-                'name': name,  # Use extracted or original name
-                'image': image,
-                'description': description,
-                'details': details,  # Keep full details for downstream processing
+                'image': None,
+                'description': '',
             })
-        
-        # Filter out places without names
+
         places_with_names = [p for p in enriched_places if p.get('name')]
         print(f"[DEBUG] Enrichment complete: {len(enriched_places)} total, {len(places_with_names)} with names")
-        logger.info(f"Enriched {min(len(places), max_details)} places with details")
+        logger.info(f"Enriched {len(detail_places)} places with details (parallel)")
         return enriched_places
     
     def get_places_from_overpass(

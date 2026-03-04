@@ -50,7 +50,6 @@ def _generate_recommendations_worker(trip_id: int) -> None:
     close_old_connections()
     
     cache = None
-    recommendations_data = {}
     
     try:
         # Import models inside thread to avoid circular imports
@@ -80,47 +79,25 @@ def _generate_recommendations_worker(trip_id: int) -> None:
         print(f"[GENERATOR] Creating TripRecommender...")
         recommender = TripRecommender(trip)
         
-        # Generate recommendations for all categories
-        # IMPORTANT: Generate 'all' first and save immediately so frontend gets results fast
-        categories = ['all', 'nature', 'adventure', 'culture', 'food']
-        
-        for category in categories:
-            try:
-                cat_filter = None if category == 'all' else category
-                print(f"[GENERATOR] Fetching OpenTripMap for category: {category}")
-                recommendations = recommender.recommend(category=cat_filter, limit=30)
-                recommendations_data[category] = recommendations
-                print(f"[GENERATOR] Places count for {category}: {len(recommendations)}")
-                
-                # SAVE PARTIAL RESULTS after each category
-                # This allows frontend to show results immediately after 'all' completes
-                cache.data = recommendations_data.copy()
-                if category == 'all' and len(recommendations) > 0:
-                    # Mark as READY after first category with results
-                    cache.status = TripRecommendationCache.Status.READY
-                    print(f"[GENERATOR] Saved partial results - status set to READY")
-                cache.expires_at = timezone.now() + timedelta(hours=24)
-                cache.save()
-                print(f"[GENERATOR] Saved cache after {category} category")
-                
-            except Exception as e:
-                print(f"[GENERATOR] ERROR in category {category}: {str(e)}")
-                logger.error(f"✗ Failed to generate {category} recommendations: {str(e)}")
-                recommendations_data[category] = []
-        
-        # Calculate total
-        total_count = sum(len(v) for v in recommendations_data.values())
-        print(f"[GENERATOR] Total recommendations: {total_count}")
+        # Single fetch — get all destinations for the trip location
+        try:
+            print(f"[GENERATOR] Fetching destinations for trip location...")
+            recommendations = recommender.recommend(limit=30)
+            print(f"[GENERATOR] Got {len(recommendations)} destinations")
+        except Exception as e:
+            print(f"[GENERATOR] ERROR fetching destinations: {str(e)}")
+            logger.error(f"✗ Failed to generate recommendations: {str(e)}")
+            recommendations = []
         
         # Update cache with SUCCESS
         print(f"[GENERATOR] Saving cache data...")
-        cache.data = recommendations_data
+        cache.data = {'recommendations': recommendations}
         cache.status = TripRecommendationCache.Status.READY
         cache.error_message = ''
         cache.expires_at = timezone.now() + timedelta(hours=24)
         cache.save()
         
-        print(f"[GENERATOR] COMPLETED for trip {trip_id} with {total_count} recommendations")
+        print(f"[GENERATOR] COMPLETED for trip {trip_id} with {len(recommendations)} recommendations")
         logger.info(f"✅ Successfully cached recommendations for trip {trip_id}")
         
     except Exception as e:
@@ -171,7 +148,7 @@ def invalidate_trip_cache(trip_id: int) -> None:
         logger.warning(f"Failed to invalidate cache for trip {trip_id}: {str(e)}")
 
 
-def get_or_generate_recommendations(trip_id: int, category: Optional[str] = None) -> dict:
+def get_or_generate_recommendations(trip_id: int) -> dict:
     """
     Get cached recommendations or trigger generation.
     
@@ -179,7 +156,6 @@ def get_or_generate_recommendations(trip_id: int, category: Optional[str] = None
     
     Args:
         trip_id: ID of the trip
-        category: Optional category filter
         
     Returns:
         Dictionary with status and data/recommendations
@@ -187,7 +163,7 @@ def get_or_generate_recommendations(trip_id: int, category: Optional[str] = None
     from apps.trips.models import Trip
     from apps.recommendations.models import TripRecommendationCache
     
-    print(f"[DEBUG] get_or_generate_recommendations called: trip_id={trip_id}, category={category}")
+    print(f"[DEBUG] get_or_generate_recommendations called: trip_id={trip_id}")
     
     try:
         trip = Trip.objects.get(id=trip_id)
@@ -214,10 +190,8 @@ def get_or_generate_recommendations(trip_id: int, category: Optional[str] = None
         
         # If cache exists and is ready
         if cache and cache.is_ready():
-            # Get category-specific data
-            category_key = category if category and category != 'all' else 'all'
-            recommendations = cache.data.get(category_key, cache.data.get('all', []))
-            print(f"[DEBUG] Cache is READY, returning {len(recommendations)} recommendations for category {category_key}")
+            recommendations = cache.data.get('recommendations', [])
+            print(f"[DEBUG] Cache is READY, returning {len(recommendations)} recommendations")
             
             return {
                 'status': 'ready',
@@ -232,8 +206,8 @@ def get_or_generate_recommendations(trip_id: int, category: Optional[str] = None
             minutes_pending = (timezone.now() - cache.last_generated).total_seconds() / 60
             print(f"[DEBUG] Cache is PENDING for {minutes_pending:.1f} minutes")
             
-            if minutes_pending > 5:
-                # Stuck - restart generation
+            if minutes_pending > 2:
+                # Stuck - restart generation (e.g. server was reloaded mid-generation)
                 print(f"[DEBUG] Cache stuck in PENDING for {minutes_pending:.1f} min, restarting...")
                 cache.status = TripRecommendationCache.Status.PENDING
                 cache.last_generated = timezone.now()

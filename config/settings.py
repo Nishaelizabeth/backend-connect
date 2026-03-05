@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'apps.chat.apps.ChatConfig',
     'apps.assistant.apps.AssistantConfig',
     'apps.store.apps.StoreConfig',
+    'apps.adminpanel.apps.AdminpanelConfig',
 ]
 
 MIDDLEWARE = [

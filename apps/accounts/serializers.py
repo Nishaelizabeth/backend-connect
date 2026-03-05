@@ -153,6 +153,7 @@ class UserSerializer(serializers.ModelSerializer):
             'profile_picture_url',
             'google_picture_url',
             'is_active',
+            'is_staff',
             'date_joined',
             'auth_provider',
             'has_preferences',

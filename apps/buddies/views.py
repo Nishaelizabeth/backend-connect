@@ -264,13 +264,15 @@ class AcceptedBuddiesListView(views.APIView):
             except Exception:
                 pass
             
-            # Build profile picture URL
+            # Build profile picture URL: uploaded picture > google picture > None
             avatar_url = None
             if match.matched_user.profile_picture:
                 try:
                     avatar_url = request.build_absolute_uri(match.matched_user.profile_picture.url)
                 except Exception:
                     avatar_url = match.matched_user.profile_picture.url
+            elif match.matched_user.google_picture_url:
+                avatar_url = match.matched_user.google_picture_url
 
             buddies.append({
                 'id': match.matched_user.id,

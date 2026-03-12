@@ -19,6 +19,8 @@ class TripImageSerializer(serializers.ModelSerializer):
 
     def get_url(self, obj):
         if obj.image_data:
+            if obj.image_data.startswith(('http://', 'https://')):
+                return obj.image_data
             return f"data:{obj.content_type};base64,{obj.image_data}"
         return None
 
@@ -275,6 +277,7 @@ class TripInvitationSerializer(serializers.Serializer):
     joined_at = serializers.DateTimeField(allow_null=True)
     members = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    cover_image = serializers.URLField(source='trip.cover_image', allow_null=True)
     conflict = serializers.SerializerMethodField()
     
     def get_destination(self, obj):
